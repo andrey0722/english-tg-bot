@@ -2,7 +2,7 @@
 all connections between program components.
 """
 
-from bot import Bot
+from bot import Bot, BotError
 from config import Config, ConfigError
 from controller import Controller
 from log import LogLevel, LogManager
@@ -30,17 +30,21 @@ class Application:
         self._logger = log.create_logger(self)
         self._model = Model()
         self._controller = Controller(self._model, log)
-        self._bot = Bot(self._controller, log)
+        self._bot = Bot(self._controller, log, self._config)
 
     def run(self):
         """Start the bot and keep running until stopped.
 
         Raises:
-            ApplicationError: Error while initializing application.
+            ApplicationError: Error while running application.
         """
         self._logger.info('Starting the bot')
-        self._bot.run()
-        self._logger.info('Bot exited normally')
+        try:
+            self._bot.run()
+            self._logger.info('Bot exited normally')
+        except BotError as e:
+            self._logger.critical('Bot running error: %s', e)
+            raise ApplicationError from e
 
     def _read_config(self, log: LogManager) -> Config:
         """Internal helper to read application config.

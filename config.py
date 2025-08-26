@@ -24,3 +24,4 @@ class Config(BaseSettings):
     )
 
     log_level: LogLevel = LogLevel.INFO
+    tg_bot_token: str = '1234567890:TG_BOT_EXAMPLE_TOKEN'
