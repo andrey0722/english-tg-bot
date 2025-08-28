@@ -30,7 +30,7 @@ class Application:
         self._logger = log.create_logger(self)
         self._model = Model()
         self._controller = Controller(self._model, log)
-        self._bot = Bot(self._controller, log, self._config)
+        self._bot = Bot(self._controller, log, self._config.tg_bot_token)
 
     def run(self):
         """Start the bot and keep running until stopped.

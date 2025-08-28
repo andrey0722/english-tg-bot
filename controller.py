@@ -1,7 +1,7 @@
 """This module implements main logic of the bot."""
 
 from log import LogManager
-from model import Model, User
+from model.types import Model, OutputMessage, InputMessage
 
 
 class Controller:
@@ -12,27 +12,26 @@ class Controller:
         self._model = model
         self._logger = log.create_logger(self)
 
-    def get_welcome_message(self, user: User) -> str:
+    def welcome_user(self, message: InputMessage) -> OutputMessage:
         """Returns welcome message for a user.
 
         Args:
-            user (User): Bot user, a new one or an old one.
+            message (InputMessage): A message from user.
 
         Returns:
-            str: Bot response to the user.
+            OutputMessage: Bot response to the user.
         """
-        self._logger.debug('Greeting %s', user.display_name)
-        return f'Приветствую, {user.display_name}!'
+        self._logger.debug('Greeting %s', message.user.display_name)
+        return OutputMessage(f'Приветствую, {message.user.display_name}!')
 
-    def get_response(self, user: User, message: str) -> str:
-        """Returns response message for a user.
+    def process_message(self, message: InputMessage) -> OutputMessage:
+        """Processes a message from user and forms a response.
 
         Args:
-            user (User): Bot user.
-            message (User): User message to the bot.
+            message (InputMessage): A message from user.
 
         Returns:
-            str: Bot response to the user.
+            OutputMessage: Bot response to the user.
         """
-        self._logger.debug('Responding to %s', user.display_name)
-        return message
+        self._logger.debug('Responding to %s', message.user.display_name)
+        return OutputMessage(message.text)

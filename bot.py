@@ -2,13 +2,12 @@
 
 import json
 from typing import Optional
-from telebot import TeleBot
-from telebot.types import Message
+import telebot
+import telebot.types
 import telebot.apihelper
-from config import Config
 from controller import Controller
 from log import LogManager
-from model import User
+from model.types import InputMessage, User
 
 
 BotError = telebot.apihelper.ApiException
@@ -23,18 +22,18 @@ class Bot:
         self,
         controller: Controller,
         log: LogManager,
-        config: Config,
+        token: str,
     ):
         """Initialize bot object.
 
         Args:
             controller (Controller): Bot controller.
             log (LogManager): Log manager to use for logging.
-            config (Config): Application config.
+            token (str): Telegram bot API token.
         """
         self._logger = log.create_logger(self)
         self._controller = controller
-        self._bot = TeleBot(config.tg_bot_token)
+        self._bot = self._create_bot(token)
 
         self._bot.register_message_handler(
             self.handle_start,
@@ -59,40 +58,59 @@ class Bot:
             self._logger.debug('Bot polling error')
             raise
 
-    def handle_start(self, message: Message):
+    def handle_start(self, message: telebot.types.Message):
         """Process /start command from user.
 
         Args:
-            message (Message): A message from user.
+            message (telebot.types.Message): A message from user.
         """
-        if user := self._process_user(message):
-            response = self._controller.get_welcome_message(user)
-            self._bot.send_message(message.chat.id, response)
+        if input_message := self._convert_message(message):
+            output_message = self._controller.welcome_user(input_message)
+            self._bot.send_message(message.chat.id, output_message.text)
 
-    def handle_message(self, message: Message):
+    def handle_message(self, message: telebot.types.Message):
         """Process any other message from user.
 
         Args:
-            message (Message): A message from user.
+            message (telebot.types.Message): A message from user.
         """
-        if user := self._process_user(message):
-            text = message.text or ''
-            response = self._controller.get_response(user, text)
-            self._bot.reply_to(message, response)
+        if input_message := self._convert_message(message):
+            output_message = self._controller.process_message(input_message)
+            self._bot.reply_to(message, output_message.text)
 
-    def _process_user(self, message: Message) -> Optional[User]:
+    def _convert_message(
+        self,
+        message: telebot.types.Message,
+    ) -> Optional[InputMessage]:
+        """Internal helper to process user message.
+
+        Args:
+            message (telebot.types.Message): A message from user.
+
+        Returns:
+            Optional[InputMessage]: Processed message object if the message
+                is valid, otherwise `None`.
+        """
+        self._logger.info('message: %s', message.text)
+        if user := self._extract_user(message):
+            return InputMessage(
+                user=user,
+                text=message.text or '',
+            )
+
+    def _extract_user(self, message: telebot.types.Message) -> Optional[User]:
         """Internal helper to extract user data from a message.
 
         Args:
-            message (Message): A message from user.
+            message (telebot.types.Message): A message from user.
 
         Returns:
-            Optional[User]: None when the message doesn't contain valid
-                user data. `User` object otherwise.
+            Optional[User]: Extracted user object if the user data
+                in message is valid, otherwise `None`.
         """
         from_user = message.from_user
         if from_user is None:
-            self._logger.debug('Null user, skipping...')
+            self._logger.warning('Null user, skipping...')
             return None
         self._logger.debug(
             'user = %s',
@@ -105,6 +123,13 @@ class Bot:
             first_name=from_user.first_name,
             last_name=from_user.last_name,
         )
-        self._logger.info('message: %s', message.text)
         self._logger.info('user: %s', user.display_name)
         return user
+
+    def _create_bot(self, token: str) -> telebot.TeleBot:
+        """Internal helper to create and return a bot object.
+
+        Args:
+            token (str): Telegram bot API token.
+        """
+        return telebot.TeleBot(token)
