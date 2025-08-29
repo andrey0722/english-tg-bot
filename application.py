@@ -6,7 +6,7 @@ from bot import Bot, BotError
 from config import Config, ConfigError
 from controller import Controller
 from log import LogLevel, LogManager
-from model import Model
+from model.memory_model import MemoryModel
 
 
 class ApplicationError(RuntimeError):
@@ -28,7 +28,7 @@ class Application:
         self._config = self._read_config(log)
         log.setup(self._config.log_level)
         self._logger = log.create_logger(self)
-        self._model = Model()
+        self._model = MemoryModel(log)
         self._controller = Controller(self._model, log)
         self._bot = Bot(self._controller, log, self._config.tg_bot_token)
 
