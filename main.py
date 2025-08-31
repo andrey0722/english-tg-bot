@@ -1,6 +1,7 @@
 """Bot application entry point."""
 
 import sys
+
 from application import Application, ApplicationError
 from log import LogLevel, LogManager
 
@@ -16,8 +17,8 @@ def main():
         app.run()
     except KeyboardInterrupt:
         logger.info('Stopped by keyboard interrupt')
-    except ApplicationError:
-        logger.critical('Stopped on error')
+    except ApplicationError as e:
+        logger.critical('Stopped on error: %s', e)
         sys.exit(1)
 
 

@@ -2,9 +2,11 @@
 
 import json
 from typing import Optional
+
 import telebot
 import telebot.types
 import telebot.apihelper
+
 from controller import Controller
 from log import LogManager
 from model.types import InputMessage, OutputMessage, User
@@ -132,7 +134,7 @@ class Bot:
         )
 
         user = User(
-            tg_id=from_user.id,
+            id=from_user.id,
             username=from_user.username,
             first_name=from_user.first_name,
             last_name=from_user.last_name,

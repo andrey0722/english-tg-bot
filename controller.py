@@ -1,7 +1,7 @@
 """This module implements main logic of the bot."""
 
 from log import LogManager
-from model.types import Model, OutputMessage, InputMessage
+from model.types import Model, ModelError, OutputMessage, InputMessage
 
 
 class Controller:
@@ -21,12 +21,18 @@ class Controller:
         Returns:
             OutputMessage: Bot response to the user.
         """
-        self._logger.info('Greeting %s', message.user)
-        if user := self._model.update_user(message.user):
-            text = f'Приветствую снова, {user.display_name}!'
-        else:
-            user = self._model.add_user(message.user)
-            text = f'Добро пожаловать, {user.display_name}!'
+        user = message.user
+        self._logger.info('Greeting %s', user)
+        try:
+            if self._model.user_exists(user.id):
+                self._model.update_user(user)
+                text = f'Приветствую снова, {user.display_name}!'
+            else:
+                self._model.add_user(user)
+                text = f'Добро пожаловать, {user.display_name}!'
+        except ModelError as e:
+            self._logger.error('Model error while greeting: %s', e)
+            text = 'Ошибка работы бота'
         return OutputMessage(user, text)
 
     def clear_user(self, message: InputMessage) -> OutputMessage:
@@ -38,12 +44,16 @@ class Controller:
         Returns:
             OutputMessage: Bot response to the user.
         """
-        self._logger.info('Erasing data for %s', message.user)
-        if user := self._model.delete_user(message.user):
-            text = f'{user.display_name}, ваши данные удалены.'
-        else:
-            user = message.user
-            text = f'{user.display_name}, ваши данные отсутствуют.'
+        user = message.user
+        self._logger.info('Erasing data for %s', user)
+        try:
+            if self._model.delete_user(user.id):
+                text = f'{user.display_name}, ваши данные удалены.'
+            else:
+                text = f'{user.display_name}, ваши данные отсутствуют.'
+        except ModelError as e:
+            self._logger.error('Model error while erasing: %s', e)
+            text = 'Ошибка работы бота'
         return OutputMessage(user, text)
 
     def process_message(self, message: InputMessage) -> OutputMessage:
@@ -55,10 +65,15 @@ class Controller:
         Returns:
             OutputMessage: Bot response to the user.
         """
-        self._logger.info('Responding to %s', message.user)
-        if user := self._model.update_user(message.user):
-            text = message.text
-        else:
-            user = message.user
-            text = 'Неизвестный пользователь'
-        return OutputMessage(user, text)
+        user = message.user
+        self._logger.info('Responding to %s', user)
+        try:
+            if self._model.user_exists(user.id):
+                self._model.update_user(user)
+                text = message.text
+            else:
+                text = 'Неизвестный пользователь'
+        except ModelError as e:
+            self._logger.error('Model error while responding: %s', e)
+            text = 'Ошибка работы бота'
+        return OutputMessage(message.user, text)

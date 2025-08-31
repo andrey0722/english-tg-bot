@@ -3,7 +3,7 @@
 from typing import MutableMapping, Optional, override
 
 from log import LogManager
-from .types import Model, User
+from .types import Model, ModelError, User, UserNotFoundError
 
 
 class MemoryModel(Model):
@@ -22,41 +22,47 @@ class MemoryModel(Model):
         self._users: MutableMapping[int, User] = {}
 
     @override
-    def get_user(self, user: User) -> Optional[User]:
-        self._logger.debug('Extracting user %r', user)
-        result = self._users.get(user.tg_id)
-        if result is not None:
-            self._logger.debug('User exists %r', result)
+    def user_exists(self, user_id: int) -> bool:
+        self._logger.debug('Checking if user %s exists', user_id)
+        user = self._users.get(user_id)
+        if result := user is not None:
+            self._logger.debug('User exists: %r', user)
         else:
-            self._logger.debug('User does not exist %r', user)
+            self._logger.debug('User %s does not exist', user_id)
         return result
 
     @override
-    def add_user(self, user: User) -> User:
+    def get_user(self, user_id: int) -> Optional[User]:
+        self._logger.debug('Extracting user %s', user_id)
+        result = self._users.get(user_id)
+        if result is not None:
+            self._logger.debug('User exists: %r', result)
+        else:
+            self._logger.debug('User %s does not exist', user_id)
+        return result
+
+    @override
+    def add_user(self, user: User):
         self._logger.debug('Adding user %r', user)
-        result = self._users.setdefault(user.tg_id, user)
-        self._logger.debug('Added user %r', result)
-        return result
+        if user.id in self._users:
+            raise ModelError(f'User {user!r} already exists')
+        self._users[user.id] = user
+        self._logger.debug('Added user %r', user)
 
     @override
-    def update_user(self, user: User) -> Optional[User]:
+    def update_user(self, user: User):
         self._logger.debug('Updating user %r', user)
-        if result := self.get_user(user):
-            result.username = user.username
-            result.first_name = user.first_name
-            result.last_name = user.last_name
-            result = self._users.setdefault(result.tg_id, result)
-            self._logger.debug('Updated user %r', user)
-        else:
-            self._logger.warning('User did not exist, cannot update %r', user)
-        return result
+        if user.id not in self._users:
+            raise UserNotFoundError(f'User {user!r} does not exist')
+        self._users[user.id] = user
+        self._logger.debug('Updated user %r', user)
 
     @override
-    def delete_user(self, user: User) -> Optional[User]:
-        self._logger.debug('Deleting user %r', user)
-        result = self._users.pop(user.tg_id, None)
-        if result is not None:
-            self._logger.debug('User deleted %r', result)
+    def delete_user(self, user_id: int) -> Optional[User]:
+        self._logger.debug('Deleting user %s', user_id)
+        user = self._users.pop(user_id, None)
+        if user is not None:
+            self._logger.debug('User deleted %r', user)
         else:
-            self._logger.warning('User did not exist, cannot delete %r', user)
-        return result
+            self._logger.warning('No user %s, cannot delete', user_id)
+        return user
