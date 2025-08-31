@@ -6,7 +6,7 @@ from typing import Optional, override
 
 from sqlalchemy import create_engine, delete, Engine, URL
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.log import InstanceLogger
+import sqlalchemy.log
 from sqlalchemy.orm import Session, sessionmaker
 
 from log import LogLevel, LogLevelLimitFilter, LogManager
@@ -48,6 +48,7 @@ class DatabaseModel(Model):
             clear_db (bool): Delete all model data that previously exists.
         """
         super().__init__()
+        self._set_sqlalchemy_logger(log)
         self._logger = log.create_logger(self)
         self._engine = self._create_engine(log, db_params)
         self._create_session = self._create_session_factory()
@@ -186,7 +187,7 @@ class DatabaseModel(Model):
             log (LogManager): Log manager to use for logging.
         """
         logger = engine.logger
-        if isinstance(logger, InstanceLogger):
+        if isinstance(logger, sqlalchemy.log.InstanceLogger):
             # Handle engine's internal wrappers for logger
             logger = logger.logger
         logger = log.create_logger(logger.name)
@@ -229,3 +230,18 @@ class DatabaseModel(Model):
         # Background on this error at: https://sqlalche.me/e/XX/YYYY
         e.code = None
         return DatabaseModelError(e)
+
+    _is_sqlalchemy_logger_set: bool = False
+
+    @staticmethod
+    def _set_sqlalchemy_logger(log: LogManager):
+        """Override logger of the `sqlalchemy` library.
+
+        Args:
+            log (LogManager): Log manager to use for logging.
+        """
+        if not DatabaseModel._is_sqlalchemy_logger_set:
+            sqlalchemy.log.rootlogger = log.create_logger(
+                sqlalchemy.log.rootlogger.name
+            )
+            DatabaseModel._is_sqlalchemy_logger_set = True
