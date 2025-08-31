@@ -1,16 +1,25 @@
 """This module defines basic types that stores application data."""
 
 import abc
-from dataclasses import dataclass
+import enum
 from typing import Optional
 
-from sqlalchemy import String
+from sqlalchemy import String, Enum
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped, MappedAsDataclass, mapped_column
 
 
 class ModelBaseType(DeclarativeBase):
     """Base class for all types used by model."""
+
+
+@enum.unique
+class UserState(enum.StrEnum):
+    """Current state for a particular user."""
+    UNKNOWN_STATE = enum.auto()
+    NEW_USER = enum.auto()
+    MAIN_MENU = enum.auto()
+    LEARNING = enum.auto()
 
 
 class User(MappedAsDataclass, ModelBaseType):
@@ -22,6 +31,10 @@ class User(MappedAsDataclass, ModelBaseType):
     username: Mapped[Optional[str]] = mapped_column(String(32))
     first_name: Mapped[Optional[str]] = mapped_column(String(64))
     last_name: Mapped[Optional[str]] = mapped_column(String(64))
+    state: Mapped = mapped_column(
+        Enum(UserState, name='userstate', metadata=ModelBaseType.metadata),
+        default=UserState.UNKNOWN_STATE,
+    )
 
     @property
     def display_name(self) -> str:
@@ -32,20 +45,6 @@ class User(MappedAsDataclass, ModelBaseType):
 
     def __str__(self):
         return self.display_name
-
-
-@dataclass
-class InputMessage:
-    """Input message data from a user to a bot."""
-    user: User
-    text: str
-
-
-@dataclass
-class OutputMessage:
-    """Output message data from a bot to a user."""
-    user: User
-    text: str
 
 
 class ModelError(Exception):
@@ -68,6 +67,9 @@ class Model(abc.ABC):
 
         Returns:
             bool: `True` is the user exists, otherwise `False`.
+
+        Raises:
+            ModelError: Model operational error.
         """
 
     @abc.abstractmethod

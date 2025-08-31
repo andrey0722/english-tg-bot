@@ -24,22 +24,17 @@ class MemoryModel(Model):
     @override
     def user_exists(self, user_id: int) -> bool:
         self._logger.debug('Checking if user %s exists', user_id)
-        user = self._users.get(user_id)
-        if result := user is not None:
-            self._logger.debug('User exists: %r', user)
-        else:
-            self._logger.debug('User %s does not exist', user_id)
-        return result
+        return self.get_user(user_id) is not None
 
     @override
     def get_user(self, user_id: int) -> Optional[User]:
         self._logger.debug('Extracting user %s', user_id)
-        result = self._users.get(user_id)
-        if result is not None:
-            self._logger.debug('User exists: %r', result)
+        user = self._users.get(user_id)
+        if user is not None:
+            self._logger.debug('User exists: %r', user)
         else:
             self._logger.debug('User %s does not exist', user_id)
-        return result
+        return user
 
     @override
     def add_user(self, user: User):

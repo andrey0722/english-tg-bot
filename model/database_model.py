@@ -10,7 +10,8 @@ import sqlalchemy.log
 from sqlalchemy.orm import Session, sessionmaker
 
 from log import LogLevel, LogLevelLimitFilter, LogManager
-from .types import Model, ModelBaseType, ModelError, User, UserNotFoundError
+from .types import Model, ModelBaseType, ModelError
+from .types import User, UserNotFoundError
 
 
 SessionFactory = Callable[[], Session]
@@ -61,19 +62,7 @@ class DatabaseModel(Model):
     @override
     def user_exists(self, user_id: int) -> bool:
         self._logger.debug('Checking if user %s exists', user_id)
-        try:
-            with self._create_session() as session:
-                user = session.get(User, user_id)
-        except SQLAlchemyError as e:
-            me = self._create_model_error(e)
-            self._logger.error('Check error: user=%r, error=%s', user_id, e)
-            raise me from e
-
-        if result := user is not None:
-            self._logger.debug('User exists: %r', user)
-        else:
-            self._logger.debug('User %s does not exist', user_id)
-        return result
+        return self.get_user(user_id) is not None
 
     @override
     def get_user(self, user_id: int) -> Optional[User]:
@@ -83,7 +72,7 @@ class DatabaseModel(Model):
                 user = session.get(User, user_id)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.error('Get error: user=%r, error=%s', user_id, e)
+            self._logger.debug('Get error: user=%r, error=%s', user_id, e)
             raise me from e
 
         if user is not None:
@@ -100,7 +89,7 @@ class DatabaseModel(Model):
                 session.add(user)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.error('Add error: user=%r, error=%s', user, e)
+            self._logger.debug('Add error: user=%r, error=%s', user, e)
             raise me from e
 
         self._logger.debug('Added user %r', user)
@@ -115,7 +104,7 @@ class DatabaseModel(Model):
                 session.merge(user)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.error('Update error: user=%r, error=%s', user, e)
+            self._logger.debug('Update error: user=%r, error=%s', user, e)
             raise me from e
 
         self._logger.debug('Updated user %r', user)
@@ -129,7 +118,7 @@ class DatabaseModel(Model):
                 user = session.scalar(stmt)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.error('Delete error: user=%r, error=%s', user_id, e)
+            self._logger.debug('Delete error: user=%r, error=%s', user_id, e)
             raise me from e
 
         if user is not None:
@@ -141,6 +130,7 @@ class DatabaseModel(Model):
     def _create_tables(self):
         """Internal helper to create tables for all entities in the DB."""
         try:
+            self._logger.debug('Creating tables')
             ModelBaseType.metadata.create_all(self._engine)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)
@@ -150,6 +140,7 @@ class DatabaseModel(Model):
     def _drop_tables(self):
         """Internal helper to delete tables for all entities in the DB."""
         try:
+            self._logger.debug('Deleting tables')
             ModelBaseType.metadata.drop_all(self._engine)
         except SQLAlchemyError as e:
             me = self._create_model_error(e)

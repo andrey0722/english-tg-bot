@@ -4,12 +4,14 @@ import json
 from typing import Optional
 
 import telebot
-import telebot.types
 import telebot.apihelper
+from telebot.types import KeyboardButton, Message as TelebotMessage
+from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telebot.types import ReplyParameters
 
-from controller import Controller
+from controller import BotKeyboard, Controller, InputMessage, OutputMessage
 from log import LogManager
-from model.types import InputMessage, OutputMessage, User
+from model.types import User
 
 
 BotError = telebot.apihelper.ApiException
@@ -65,44 +67,44 @@ class Bot:
             self._logger.debug('Bot polling error')
             raise
 
-    def handle_start(self, message: telebot.types.Message):
+    def handle_start(self, message: TelebotMessage):
         """Process /start command from user.
 
         Args:
-            message (telebot.types.Message): A message from user.
+            message (TelebotMessage): A message from user.
         """
-        if input_message := self._convert_message(message):
-            output_message = self._controller.welcome_user(input_message)
-            self._send_message(message, output_message)
+        if in_message := self._convert_message(message):
+            if response := self._controller.start_user(in_message):
+                self._send_message(message, response)
 
-    def handle_clear(self, message: telebot.types.Message):
+    def handle_clear(self, message: TelebotMessage):
         """Process /clear command from user.
 
         Args:
-            message (telebot.types.Message): A message from user.
+            message (TelebotMessage): A message from user.
         """
-        if input_message := self._convert_message(message):
-            output_message = self._controller.clear_user(input_message)
-            self._send_message(message, output_message)
+        if in_message := self._convert_message(message):
+            if response := self._controller.clear_user(in_message):
+                self._send_message(message, response)
 
-    def handle_message(self, message: telebot.types.Message):
+    def handle_message(self, message: TelebotMessage):
         """Process any other message from user.
 
         Args:
-            message (telebot.types.Message): A message from user.
+            message (TelebotMessage): A message from user.
         """
-        if input_message := self._convert_message(message):
-            output_message = self._controller.process_message(input_message)
-            self._reply_message(message, output_message)
+        if in_message := self._convert_message(message):
+            if response := self._controller.respond_user(in_message):
+                self._send_message(message, response, reply=True)
 
     def _convert_message(
         self,
-        message: telebot.types.Message,
+        message: TelebotMessage,
     ) -> Optional[InputMessage]:
         """Internal helper to process user message.
 
         Args:
-            message (telebot.types.Message): A message from user.
+            message (TelebotMessage): A message from user.
 
         Returns:
             Optional[InputMessage]: Processed message object if the message
@@ -115,11 +117,11 @@ class Bot:
                 text=message.text or '',
             )
 
-    def _extract_user(self, message: telebot.types.Message) -> Optional[User]:
+    def _extract_user(self, message: TelebotMessage) -> Optional[User]:
         """Internal helper to extract user data from a message.
 
         Args:
-            message (telebot.types.Message): A message from user.
+            message (TelebotMessage): A message from user.
 
         Returns:
             Optional[User]: Extracted user object if the user data
@@ -145,39 +147,63 @@ class Bot:
 
     def _send_message(
         self,
-        message: telebot.types.Message,
-        output_message: OutputMessage,
+        message: TelebotMessage,
+        response: OutputMessage,
+        *,
+        reply: bool = False,
     ):
         """Internal helper to send response back to the user.
 
         Args:
-            message (telebot.types.Message): A message from user.
-            output_message (OutputMessage): Bot response to the user.
+            message (TelebotMessage): A message from user.
+            response (OutputMessage): Bot response to the user.
+            reply (bool, optional): If `True` send the message as a reply
+                to the user message. Defaults to `False`.
         """
-        self._logger.debug(
-            'Sending "%s" to %r',
-            output_message.text,
-            output_message.user,
-        )
-        self._bot.send_message(message.chat.id, output_message.text)
+        self._logger.debug('Sending "%s" to %r', response.text, response.user)
 
-    def _reply_message(
-        self,
-        message: telebot.types.Message,
-        output_message: OutputMessage,
-    ):
-        """Internal helper to send response back to the user as a reply.
+        if reply:
+            self._logger.debug('Replying to user')
+            reply_parameters = self._get_reply_params(message)
+        else:
+            reply_parameters = None
+
+        if keyboard := response.keyboard:
+            self._logger.debug(f'Keyboard: {keyboard!r}')
+            reply_markup = self._get_reply_keyboard(keyboard)
+        else:
+            reply_markup = ReplyKeyboardRemove()
+
+        self._bot.send_message(
+            chat_id=message.chat.id,
+            text=response.text,
+            reply_parameters=reply_parameters,
+            reply_markup=reply_markup,
+        )
+
+    @staticmethod
+    def _get_reply_params(message: TelebotMessage):
+        """Internal helper to calculate reply parameters for bot message.
 
         Args:
-            message (telebot.types.Message): A message from user.
-            output_message (OutputMessage): Bot response to the user.
+            message (TelebotMessage): A message from user.
         """
-        self._logger.debug(
-            'Replying "%s" to %r',
-            output_message.text,
-            output_message.user,
+        return ReplyParameters(message_id=message.id)
+
+    @staticmethod
+    def _get_reply_keyboard(keyboard: BotKeyboard) -> ReplyKeyboardMarkup:
+        """Internal helper to calculate keyboard markup for user reply.
+
+        Args:
+            keyboard (BotKeyboard): Bot keyboard.
+        """
+        reply_markup = ReplyKeyboardMarkup(
+            row_width=keyboard.row_size,
+            resize_keyboard=True,
         )
-        self._bot.reply_to(message, output_message.text)
+        buttons = [KeyboardButton(x) for x in keyboard.buttons]
+        reply_markup.add(*buttons)
+        return reply_markup
 
     def _create_bot(self, token: str) -> telebot.TeleBot:
         """Internal helper to create and return a bot object.
