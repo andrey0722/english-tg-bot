@@ -18,7 +18,7 @@ def main():
     except KeyboardInterrupt:
         logger.info('Stopped by keyboard interrupt')
     except ApplicationError as e:
-        logger.critical('Stopped on error: %s', e)
+        logger.fatal('Stopped on error: %s', e)
         sys.exit(1)
 
 

@@ -45,7 +45,7 @@ class Application:
             self._bot.run()
             self._logger.info('Bot exited normally')
         except BotError as e:
-            self._logger.critical('Bot running error: %s', e)
+            self._logger.fatal('Bot running error: %s', e)
             raise ApplicationError(e) from e
 
     def _create_model(self, log: LogManager) -> Model:

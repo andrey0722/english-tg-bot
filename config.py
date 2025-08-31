@@ -18,8 +18,10 @@ from log import LogLevel
 ConfigError = ValidationError
 
 
+@enum.unique
 class StorageType(enum.StrEnum):
     """Depicts storage type that the application will use to store data."""
+
     DATABASE = 'DATABASE'
     MEMORY = 'MEMORY'
 

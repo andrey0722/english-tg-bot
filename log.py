@@ -6,10 +6,10 @@ import logging
 from typing import Any, Optional, override
 
 
+@enum.unique
 class LogLevel(enum.IntEnum):
     """Defines all valid log levels for the application."""
 
-    CRITICAL = logging.CRITICAL
     FATAL = logging.FATAL
     ERROR = logging.ERROR
     WARNING = logging.WARNING
