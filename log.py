@@ -75,6 +75,8 @@ class LogManager:
                 Defaults to LogLevel.INFO.
         """
         logger_name = self._get_logger_name(obj)
+        # Delete logger if it exists
+        Logger.manager.loggerDict.pop(logger_name, None)
         logger = logging.getLogger(logger_name)
         if level is not None:
             logger.setLevel(level.value)

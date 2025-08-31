@@ -35,6 +35,7 @@ class Bot:
         """
         self._logger = log.create_logger(self)
         self._controller = controller
+        self._set_telebot_logger(log)
         self._bot = self._create_bot(token)
 
         self._bot.register_message_handler(
@@ -185,3 +186,16 @@ class Bot:
             token (str): Telegram bot API token.
         """
         return telebot.TeleBot(token)
+
+    _is_telebot_logger_set: bool = False
+
+    @staticmethod
+    def _set_telebot_logger(log: LogManager):
+        """Override logger of the `telebot` library.
+
+        Args:
+            log (LogManager): Log manager to use for logging.
+        """
+        if not Bot._is_telebot_logger_set:
+            telebot.logger = log.create_logger(telebot.logger.name)
+            Bot._is_telebot_logger_set = True
