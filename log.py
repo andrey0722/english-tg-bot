@@ -5,6 +5,8 @@ import enum
 import logging
 from typing import Any, Optional, override
 
+import coloredlogs
+
 
 @enum.unique
 class LogLevel(enum.IntEnum):
@@ -57,7 +59,8 @@ class LogManager:
             level (LogLevel, optional): Desired log level to apply.
                 Defaults to LogLevel.INFO.
         """
-        logging.basicConfig(level=level.value, force=True)
+        logging.basicConfig(level=level, force=True)
+        coloredlogs.install(level=level)
 
     def create_logger(
         self,
