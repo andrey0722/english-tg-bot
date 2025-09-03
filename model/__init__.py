@@ -2,6 +2,8 @@
 
 from . import db
 
+Session = db.Session
+
 
 class Model(db.DatabaseModel):
     """Stores all application data."""

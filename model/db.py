@@ -29,7 +29,8 @@ class DatabaseConfig:
     clear_data: bool
 
 
-SessionFactory = Callable[[], orm.Session]
+Session = orm.Session
+SessionFactory = Callable[[], Session]
 
 
 class DatabaseModelError(ModelError):
@@ -60,10 +61,19 @@ class DatabaseModel:
         self._create_tables()
         self._set_engine_logger(self._engine)
 
-    def user_exists(self, user_id: int) -> bool:
+    def create_session(self) -> Session:
+        """Create session to interact with objects in the model.
+
+        Returns:
+            Session: Session object.
+        """
+        return self._create_session()
+
+    def user_exists(self, session: Session, user_id: int) -> bool:
         """Checks whether the model contains user with specified Telegram id.
 
         Args:
+            session (Session): Session object.
             user_id (int): User Telegram id.
 
         Returns:
@@ -73,12 +83,13 @@ class DatabaseModel:
             ModelError: Model operational error.
         """
         self._logger.debug('Checking if user %s exists', user_id)
-        return self.get_user(user_id) is not None
+        return self.get_user(session, user_id) is not None
 
-    def get_user(self, user_id: int) -> Optional[User]:
+    def get_user(self, session: Session, user_id: int) -> Optional[User]:
         """Extracts a user from the model using user Telegram id.
 
         Args:
+            session (Session): Session object.
             user_id (int): User Telegram id.
 
         Returns:
@@ -90,8 +101,7 @@ class DatabaseModel:
         """
         self._logger.debug('Extracting user %s', user_id)
         try:
-            with self._create_session() as session:
-                user = session.get(User, user_id)
+            user = session.get(User, user_id)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Get error: user=%r, error=%s', user_id, e)
@@ -103,11 +113,12 @@ class DatabaseModel:
             self._logger.debug('User %s does not exist', user_id)
         return user
 
-    def add_user(self, user: User):
+    def add_user(self, session: Session, user: User):
         """Adds new user into the model. Input object could be
         modified in-place to respect model changes.
 
         Args:
+            session (Session): Session object.
             user (User): User object.
 
         Raises:
@@ -115,8 +126,7 @@ class DatabaseModel:
         """
         self._logger.debug('Adding user %r', user)
         try:
-            with self._create_session() as session, session.begin():
-                session.add(user)
+            session.add(user)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Add error: user=%r, error=%s', user, e)
@@ -124,10 +134,11 @@ class DatabaseModel:
 
         self._logger.debug('Added user %r', user)
 
-    def update_user(self, user: User):
+    def update_user(self, session: Session, user: User):
         """Updates existing user info in the model.
 
         Args:
+            session (Session): Session object.
             user (User): User object.
 
         Raises:
@@ -136,10 +147,9 @@ class DatabaseModel:
         """
         self._logger.debug('Updating user %r', user)
         try:
-            with self._create_session() as session, session.begin():
-                if session.get(User, user.id) is None:
-                    raise UserNotFoundError(f'User {user!r} does not exist')
-                session.merge(user)
+            if session.get(User, user.id) is None:
+                raise UserNotFoundError(f'User {user!r} does not exist')
+            session.merge(user)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Update error: user=%r, error=%s', user, e)
@@ -147,10 +157,11 @@ class DatabaseModel:
 
         self._logger.debug('Updated user %r', user)
 
-    def delete_user(self, user_id: int) -> Optional[User]:
+    def delete_user(self, session: Session, user_id: int) -> Optional[User]:
         """Deletes user from the model.
 
         Args:
+            session (Session): Session object.
             user_id (int): User Telegram id.
 
         Returns:
@@ -163,9 +174,8 @@ class DatabaseModel:
 
         self._logger.debug('Deleting user %r', user_id)
         try:
-            with self._create_session() as session, session.begin():
-                stmt = sa.delete(User).where(User.id == user_id).returning(User)
-                user = session.scalar(stmt)
+            stmt = sa.delete(User).where(User.id == user_id).returning(User)
+            user = session.scalar(stmt)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Delete error: user=%r, error=%s', user_id, e)

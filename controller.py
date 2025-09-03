@@ -8,6 +8,7 @@ from messages import LearningMenu
 from messages import MainMenu
 from messages import Messages
 from model import Model
+from model import Session
 from model.types import ModelError
 from model.types import User
 from model.types import UserState
@@ -66,11 +67,12 @@ class Controller:
         user = message.user
         self._logger.info('Greeting %s', user)
         try:
-            self._preprocess_user(user)
-            greeting = self._get_greeting_text(user)
-            response = self._start_main_menu(message)
-            response.add_paragraph_before(greeting)
-            return response
+            with self._model.create_session() as session:
+                self._preprocess_user(session, user)
+                greeting = self._get_greeting_text(user)
+                response = self._start_main_menu(session, message)
+                response.add_paragraph_before(greeting)
+                return response
         except ModelError as e:
             self._logger.error('Model error while greeting: %s', e)
             return OutputMessage(user, Messages.BOT_ERROR)
@@ -87,11 +89,12 @@ class Controller:
         user = message.user
         self._logger.info('Erasing data for %s', user)
         try:
-            if self._model.delete_user(user.id):
-                template = Messages.DELETED_USER
-            else:
-                template = Messages.DELETED_NOT_EXISTING
-            return OutputMessage(user, template.format(user.display_name))
+            with self._model.create_session() as session:
+                if self._delete_user(session, user):
+                    template = Messages.DELETED_USER
+                else:
+                    template = Messages.DELETED_NOT_EXISTING
+                return OutputMessage(user, template.format(user.display_name))
         except ModelError as e:
             self._logger.error('Model error while erasing: %s', e)
             return OutputMessage(user, Messages.BOT_ERROR)
@@ -111,30 +114,36 @@ class Controller:
         user = message.user
         self._logger.info('Responding to %s', user)
         try:
-            if not self._model.user_exists(user.id):
-                return OutputMessage(user, Messages.USER_NOT_STARTED)
-            self._preprocess_user(user)
-            match user.state:
-                case UserState.MAIN_MENU:
-                    return self._respond_main_menu(message)
-                case UserState.LEARNING:
-                    return self._respond_learning(message)
+            with self._model.create_session() as session:
+                if not self._model.user_exists(session, user.id):
+                    return OutputMessage(user, Messages.USER_NOT_STARTED)
+                self._preprocess_user(session, user)
+                match user.state:
+                    case UserState.MAIN_MENU:
+                        return self._respond_main_menu(session, message)
+                    case UserState.LEARNING:
+                        return self._respond_learning(session, message)
         except ModelError as e:
             self._logger.error('Model error while responding: %s', e)
             return OutputMessage(user, Messages.BOT_ERROR)
 
-    def _start_main_menu(self, message: InputMessage) -> OutputMessage:
+    def _start_main_menu(
+        self,
+        session: Session,
+        message: InputMessage,
+    ) -> OutputMessage:
         """Internal helper that shows main menu to a user with
         keyboard selection.
 
         Args:
+            session (Session): Session object.
             message (InputMessage): A message from user.
 
         Returns:
             OutputMessage: Bot response to the user.
         """
         user = message.user
-        self._update_user_state(user, UserState.MAIN_MENU)
+        self._update_user_state(session, user, UserState.MAIN_MENU)
         return OutputMessage(
             user=user,
             text=Messages.SELECT_MAIN_MENU,
@@ -151,11 +160,13 @@ class Controller:
 
     def _respond_main_menu(
         self,
+        session: Session,
         message: InputMessage,
     ) -> Optional[OutputMessage]:
         """Internal helper that checks and processes user input from main menu.
 
         Args:
+            session (Session): Session object.
             message (InputMessage): A message from user.
 
         Returns:
@@ -169,21 +180,26 @@ class Controller:
         )
         match text:
             case MainMenu.LEARN:
-                return self._start_learning(message)
+                return self._start_learning(session, message)
             case _:
                 self._logger.info('Unknown main menu option: %s', text)
 
-    def _start_learning(self, message: InputMessage) -> OutputMessage:
+    def _start_learning(
+        self,
+        session: Session,
+        message: InputMessage,
+    ) -> OutputMessage:
         """Internal helper that shows learning cards to a user.
 
         Args:
+            session (Session): Session object.
             message (InputMessage): A message from user.
 
         Returns:
             OutputMessage: Bot response to the user.
         """
         user = message.user
-        self._update_user_state(user, UserState.LEARNING)
+        self._update_user_state(session, user, UserState.LEARNING)
         return OutputMessage(
             user=user,
             text=Messages.SELECT_LEARNING,
@@ -200,12 +216,14 @@ class Controller:
 
     def _respond_learning(
         self,
+        session: Session,
         message: InputMessage,
     ) -> Optional[OutputMessage]:
         """Internal helper that checks and processes user input in
         learning mode.
 
         Args:
+            session (Session): Session object.
             message (InputMessage): A message from user.
 
         Returns:
@@ -219,42 +237,65 @@ class Controller:
         )
         match text:
             case LearningMenu.FINISH:
-                response = self._start_main_menu(message)
+                response = self._start_main_menu(session, message)
                 response.add_paragraph_before(Messages.FINISHED_LEARNING)
                 return response
             case _:
                 self._logger.info('Unknown learning menu option: %s', text)
 
-    def _preprocess_user(self, user: User):
+    def _preprocess_user(self, session: Session, user: User):
         """Internal helper to process input user object using the model.
         Must be called when starting to process new message from a user.
 
         Args:
+            session (Session): Session object.
             user (User): A bot user.
         """
         if user.state != UserState.UNKNOWN_STATE:
             # User has already been processed
             return
         # See if we have this user in the model
-        if existing_user := self._model.get_user(user.id):
+        if existing_user := self._model.get_user(session, user.id):
             # Apply user state from the model
             user.state = existing_user.state
             # Update user info, it could change since last massage
-            self._model.update_user(user)
+            self._model.update_user(session, user)
         else:
             # User is now known
             user.state = UserState.NEW_USER
-            self._model.add_user(user)
+            self._model.add_user(session, user)
+        session.commit()
 
-    def _update_user_state(self, user: User, state: UserState):
-        """Internel helper to modify user state and reflect it in the model.
+    def _delete_user(self, session: Session, user: User) -> bool:
+        """Internal helper to delete user from the model.
 
         Args:
+            session (Session): Session object.
+            user (User): A bot user.
+
+        Returns:
+            bool: `True` if existing user was deleted, otherwise `False`.
+        """
+        deleted = self._model.delete_user(session, user.id)
+        session.commit()
+        return deleted is not None
+
+    def _update_user_state(
+        self,
+        session: Session,
+        user: User,
+        state: UserState,
+    ):
+        """Internal helper to modify user state and reflect it in the model.
+
+        Args:
+            session (Session): Session object.
             user (User): A bot user.
             state (UserState): New user state.
         """
         user.state = state
-        self._model.update_user(user)
+        self._model.update_user(session, user)
+        session.commit()
 
     @staticmethod
     def _get_greeting_text(user: User) -> str:
