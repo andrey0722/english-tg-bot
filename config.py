@@ -2,7 +2,6 @@
 program operation.
 """
 
-import enum
 from typing import Any
 
 from pydantic import Field
@@ -12,18 +11,9 @@ from pydantic_core import PydanticKnownError
 from pydantic_settings import BaseSettings
 from pydantic_settings import SettingsConfigDict
 
-from log import LogLevel
-
+import log
 
 ConfigError = ValidationError
-
-
-@enum.unique
-class StorageType(enum.StrEnum):
-    """Depicts storage type that the application will use to store data."""
-
-    DATABASE = 'DATABASE'
-    MEMORY = 'MEMORY'
 
 
 class ConfigBase(BaseSettings):
@@ -41,10 +31,8 @@ class Config(ConfigBase):
 
     See .env.example file for variable description.
     """
-    log_level: LogLevel = LogLevel.INFO
+    log_level: log.LogLevel = log.LogLevel.INFO
     tg_bot_token: str = '1234567890:TG_BOT_EXAMPLE_TOKEN'
-    storage_type: StorageType = StorageType.DATABASE
-    clear_data: bool = False
 
     @field_validator('log_level', mode='before')
     @classmethod
@@ -59,10 +47,10 @@ class Config(ConfigBase):
         """
         if isinstance(value, str):
             # Process only strings
-            members = LogLevel.__members__.keys()
+            members = log.LogLevel.__members__.keys()
             if value in members:
                 # Convert exact enum member names
-                return LogLevel[value]
+                return log.LogLevel[value]
             else:
                 # Show member string values in error message
                 # Mimic the pydantic's way of formatting
@@ -82,9 +70,10 @@ class DatabaseConfig(ConfigBase):
 
     See .env.example file for variable description.
     """
-    drivername: str = Field(alias='DB_DRIVER', default='postgresql+psycopg2')
+    driver: str = Field(alias='DB_DRIVER', default='postgresql+psycopg2')
     host: str = Field(alias='DB_HOST', default='localhost')
     port: int = Field(alias='DB_PORT', default=5432)
     database: str = Field(alias='DB_NAME', default='english_tg_bot')
-    username: str = Field(alias='DB_USER', default='postgres')
+    user: str = Field(alias='DB_USER', default='postgres')
     password: str = Field(alias='DB_PASS', default='postgres')
+    clear_data: bool = False

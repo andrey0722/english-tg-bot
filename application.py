@@ -2,13 +2,15 @@
 all connections between program components.
 """
 
-from bot import Bot, BotError
-from config import Config, ConfigError, DatabaseConfig, StorageType
+from bot import Bot
+from bot import BotError
+from config import Config
+from config import ConfigError
+from config import DatabaseConfig
 from controller import Controller
-from log import LogManager
-from model.memory_model import MemoryModel
-from model.database_model import DatabaseModel, DatabaseParams
-from model.types import Model, ModelError
+import log
+import model
+import model.types
 
 
 class ApplicationError(RuntimeError):
@@ -18,21 +20,18 @@ class ApplicationError(RuntimeError):
 class Application:
     """Main class of the bot application."""
 
-    def __init__(self, log: LogManager):
+    def __init__(self):
         """Initialize application object.
-
-        Args:
-            log (LogManager): Log manager to use for logging.
 
         Raises:
             ApplicationError: Error while initializing application.
         """
         self._config = self._read_config()
-        log.setup(self._config.log_level)
+        log.setup_logging(self._config.log_level)
         self._logger = log.create_logger(self)
-        self._model = self._create_model(log)
-        self._controller = Controller(self._model, log)
-        self._bot = Bot(self._controller, log, self._config.tg_bot_token)
+        self._model = self._create_model()
+        self._controller = Controller(self._model)
+        self._bot = Bot(self._controller, self._config.tg_bot_token)
 
     def run(self):
         """Start the bot and keep running until stopped.
@@ -48,33 +47,16 @@ class Application:
             self._logger.fatal('Bot running error: %s', e)
             raise ApplicationError(e) from e
 
-    def _create_model(self, log: LogManager) -> Model:
-        storage_type = self._config.storage_type
-        self._logger.debug('Using storage type "%s"', storage_type)
+    def _create_model(self) -> model.Model:
         try:
-            match storage_type:
-                case StorageType.DATABASE:
-                    db_config = self._read_db_config()
-                    db_params = DatabaseParams(**db_config.model_dump())
-                    return DatabaseModel(
-                        log,
-                        db_params,
-                        self._config.clear_data,
-                    )
-                case StorageType.MEMORY:
-                    return MemoryModel(log)
-                case _:
-                    raise ApplicationError(
-                        f'Unable to create model for storage "{storage_type}"'
-                    )
-        except ModelError as e:
+            db_config = self._read_db_config()
+            db_params = model.ModelConfig(**db_config.model_dump())
+            return model.create_model(db_params)
+        except model.types.ModelError as e:
             raise ApplicationError(e) from e
 
     def _read_config(self) -> Config:
         """Internal helper to read application config.
-
-        Args:
-            log (LogManager): Log manager to use for logging.
 
         Raises:
             ApplicationError: Error while reading config.
@@ -89,9 +71,6 @@ class Application:
 
     def _read_db_config(self) -> DatabaseConfig:
         """Internal helper to read application config.
-
-        Args:
-            log (LogManager): Log manager to use for logging.
 
         Raises:
             ApplicationError: Error while reading config.

@@ -3,9 +3,14 @@
 import dataclasses
 from typing import List, Optional
 
-from log import LogManager
-from messages import LearningMenu, MainMenu, Messages
-from model.types import Model, ModelError, User, UserState
+import log
+from messages import LearningMenu
+from messages import MainMenu
+from messages import Messages
+from model import Model
+from model.types import ModelError
+from model.types import User
+from model.types import UserState
 
 
 @dataclasses.dataclass
@@ -44,7 +49,7 @@ class OutputMessage:
 class Controller:
     """A class which instance processes input from the bot and handles it."""
 
-    def __init__(self, model: Model, log: LogManager) -> None:
+    def __init__(self, model: Model) -> None:
         """Initialize controller object."""
         self._model = model
         self._logger = log.create_logger(self)

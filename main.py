@@ -2,18 +2,17 @@
 
 import sys
 
-from application import Application, ApplicationError
-from log import LogLevel, LogManager
+from application import Application
+from application import ApplicationError
+import log
 
 
 def main():
     """Initialize the bot and run it."""
-    log = LogManager()
-    default_log_level = LogLevel.INFO
-    log.setup(default_log_level)
-    logger = log.create_logger(main, default_log_level)
+    log.setup_logging(log.LogLevel.INFO)
+    logger = log.create_logger(main)
     try:
-        app = Application(log)
+        app = Application()
         app.run()
     except KeyboardInterrupt:
         logger.info('Stopped by keyboard interrupt')

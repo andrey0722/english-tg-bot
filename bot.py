@@ -5,14 +5,19 @@ from typing import Optional
 
 import telebot
 import telebot.apihelper
-from telebot.types import KeyboardButton, Message as TelebotMessage
-from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telebot.types import KeyboardButton
+from telebot.types import Message as TelebotMessage
+from telebot.types import ReplyKeyboardMarkup
+from telebot.types import ReplyKeyboardRemove
 from telebot.types import ReplyParameters
 
-from controller import BotKeyboard, Controller, InputMessage, OutputMessage
-from log import LogManager
+from controller import BotKeyboard
+from controller import Controller
+from controller import InputMessage
+from controller import OutputMessage
+import log
 from model.types import User
-
+import utils
 
 BotError = telebot.apihelper.ApiException
 
@@ -25,19 +30,17 @@ class Bot:
     def __init__(
         self,
         controller: Controller,
-        log: LogManager,
         token: str,
     ):
         """Initialize bot object.
 
         Args:
             controller (Controller): Bot controller.
-            log (LogManager): Log manager to use for logging.
             token (str): Telegram bot API token.
         """
         self._logger = log.create_logger(self)
         self._controller = controller
-        self._set_telebot_logger(log)
+        self._set_telebot_logger()
         self._bot = self._create_bot(token)
 
         self._bot.register_message_handler(
@@ -169,7 +172,7 @@ class Bot:
             reply_parameters = None
 
         if keyboard := response.keyboard:
-            self._logger.debug(f'Keyboard: {keyboard!r}')
+            self._logger.debug('Keyboard: %r', keyboard)
             reply_markup = self._get_reply_keyboard(keyboard)
         else:
             reply_markup = ReplyKeyboardRemove()
@@ -213,15 +216,8 @@ class Bot:
         """
         return telebot.TeleBot(token)
 
-    _is_telebot_logger_set: bool = False
-
     @staticmethod
-    def _set_telebot_logger(log: LogManager):
-        """Override logger of the `telebot` library.
-
-        Args:
-            log (LogManager): Log manager to use for logging.
-        """
-        if not Bot._is_telebot_logger_set:
-            telebot.logger = log.create_logger(telebot.logger.name)
-            Bot._is_telebot_logger_set = True
+    @utils.call_once
+    def _set_telebot_logger():
+        """Override logger of the `telebot` library."""
+        telebot.logger = log.create_logger(telebot.logger.name)

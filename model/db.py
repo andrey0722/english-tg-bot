@@ -1,76 +1,98 @@
 """Defines a database data model."""
 
-from collections.abc import Callable
 import dataclasses
-from typing import Optional, override
+from typing import Callable, Optional
 
-from sqlalchemy import create_engine, delete, Engine, URL
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import exc
+from sqlalchemy import orm
+import sqlalchemy as sa
 import sqlalchemy.log
-from sqlalchemy.orm import Session, sessionmaker
 
-from log import LogLevel, LogLevelLimitFilter, LogManager
-from .types import Model, ModelBaseType, ModelError
-from .types import User, UserNotFoundError
+import log
+import utils
+
+from .types import ModelBaseType
+from .types import ModelError
+from .types import User
+from .types import UserNotFoundError
 
 
-SessionFactory = Callable[[], Session]
+@dataclasses.dataclass
+class DatabaseConfig:
+    """Parameters required to establish DB connection."""
+    driver: str
+    host: str
+    port: int
+    database: str
+    user: str
+    password: str
+    clear_data: bool
+
+
+SessionFactory = Callable[[], orm.Session]
 
 
 class DatabaseModelError(ModelError):
     """Error while interacting with database."""
 
 
-@dataclasses.dataclass
-class DatabaseParams:
-    """Parameters required to establish DB connection."""
-    drivername: str
-    host: str
-    port: int
-    database: str
-    username: str
-    password: str
-
-
-class DatabaseModel(Model):
+class DatabaseModel:
     """Stores data in database persistently."""
 
-    def __init__(
-        self,
-        log: LogManager,
-        db_params: DatabaseParams,
-        clear_db: bool = False,
-    ):
+    def __init__(self, db_params: DatabaseConfig):
         """Initialize database model object.
 
         Args:
-            log (LogManager): Log manager to use for logging.
-            db_params (DatabaseParams): DB connection parameters.
+            db_params (DatabaseConfig): DB connection parameters.
             clear_db (bool): Delete all model data that previously exists.
+
+        Raises:
+            ModelError: Model creation error.
         """
         super().__init__()
-        self._set_sqlalchemy_logger(log)
+        self._set_sqlalchemy_logger()
         self._logger = log.create_logger(self)
-        self._engine = self._create_engine(log, db_params)
+        self._engine = self._create_engine(db_params)
         self._create_session = self._create_session_factory()
         self._test_db_connection()
-        if clear_db:
+        if db_params.clear_data:
             self._drop_tables()
         self._create_tables()
-        self._set_engine_logger(self._engine, log)
+        self._set_engine_logger(self._engine)
 
-    @override
     def user_exists(self, user_id: int) -> bool:
+        """Checks whether the model contains user with specified Telegram id.
+
+        Args:
+            user_id (int): User Telegram id.
+
+        Returns:
+            bool: `True` is the user exists, otherwise `False`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
         self._logger.debug('Checking if user %s exists', user_id)
         return self.get_user(user_id) is not None
 
-    @override
     def get_user(self, user_id: int) -> Optional[User]:
+        """Extracts a user from the model using user Telegram id.
+
+        Args:
+            user_id (int): User Telegram id.
+
+        Returns:
+            Optional[User]: Found user object for this Telegram id if any,
+                otherwise `None`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
         self._logger.debug('Extracting user %s', user_id)
         try:
             with self._create_session() as session:
                 user = session.get(User, user_id)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Get error: user=%r, error=%s', user_id, e)
             raise me from e
@@ -81,42 +103,70 @@ class DatabaseModel(Model):
             self._logger.debug('User %s does not exist', user_id)
         return user
 
-    @override
     def add_user(self, user: User):
+        """Adds new user into the model. Input object could be
+        modified in-place to respect model changes.
+
+        Args:
+            user (User): User object.
+
+        Raises:
+            ModelError: Model operational error.
+        """
         self._logger.debug('Adding user %r', user)
         try:
             with self._create_session() as session, session.begin():
                 session.add(user)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Add error: user=%r, error=%s', user, e)
             raise me from e
 
         self._logger.debug('Added user %r', user)
 
-    @override
     def update_user(self, user: User):
+        """Updates existing user info in the model.
+
+        Args:
+            user (User): User object.
+
+        Raises:
+            UserNotFoundError: The user is not found in the model.
+            ModelError: Model operational error.
+        """
         self._logger.debug('Updating user %r', user)
         try:
             with self._create_session() as session, session.begin():
                 if session.get(User, user.id) is None:
                     raise UserNotFoundError(f'User {user!r} does not exist')
                 session.merge(user)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Update error: user=%r, error=%s', user, e)
             raise me from e
 
         self._logger.debug('Updated user %r', user)
 
-    @override
     def delete_user(self, user_id: int) -> Optional[User]:
+        """Deletes user from the model.
+
+        Args:
+            user_id (int): User Telegram id.
+
+        Returns:
+            Optional[User]: User object previously stored in the model,
+                if any, otherwise `None`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+
         self._logger.debug('Deleting user %r', user_id)
         try:
             with self._create_session() as session, session.begin():
-                stmt = delete(User).where(User.id == user_id).returning(User)
+                stmt = sa.delete(User).where(User.id == user_id).returning(User)
                 user = session.scalar(stmt)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Delete error: user=%r, error=%s', user_id, e)
             raise me from e
@@ -132,7 +182,7 @@ class DatabaseModel(Model):
         try:
             self._logger.debug('Creating tables')
             ModelBaseType.metadata.create_all(self._engine)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Create tables error: %s', e)
             raise me from e
@@ -142,40 +192,41 @@ class DatabaseModel(Model):
         try:
             self._logger.debug('Deleting tables')
             ModelBaseType.metadata.drop_all(self._engine)
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Delete tables error: %s', e)
             raise me from e
 
-    def _create_dsn(self, params: DatabaseParams) -> URL:
-        """Internal helper to form and return a DSN from `DatabaseParams`.
+    def _create_dsn(self, params: DatabaseConfig) -> sa.URL:
+        """Internal helper to form and return a DSN from `DatabaseConfig`.
 
         Args:
-            params (DatabaseParams): DB connection parameters.
+            params (DatabaseConfig): DB connection parameters.
         """
-        return URL.create(**dataclasses.asdict(params))
+        return sa.URL.create(
+            drivername=params.driver,
+            host=params.host,
+            port=params.port,
+            database=params.database,
+            username=params.user,
+            password=params.password,
+        )
 
-    def _create_engine(
-        self,
-        log: LogManager,
-        params: DatabaseParams,
-    ) -> Engine:
+    def _create_engine(self, params: DatabaseConfig) -> sa.Engine:
         """Internal helper to create and return DB engine object.
 
         Args:
-            log (LogManager): Log manager to use for logging.
-            params (DatabaseParams): DB connection parameters.
+            params (DatabaseConfig): DB connection parameters.
         """
-        engine = create_engine(self._create_dsn(params), echo='debug')
-        self._set_engine_logger(engine, log)
+        engine = sa.create_engine(self._create_dsn(params), echo='debug')
+        self._set_engine_logger(engine)
         return engine
 
-    def _set_engine_logger(self, engine: Engine, log: LogManager):
+    def _set_engine_logger(self, engine: sa.Engine):
         """Internal helper to monkey patch engine logger.
 
         Args:
-            engine (Engine): Engine object.
-            log (LogManager): Log manager to use for logging.
+            engine (sa.Engine): Engine object.
         """
         logger = engine.logger
         if isinstance(logger, sqlalchemy.log.InstanceLogger):
@@ -183,14 +234,14 @@ class DatabaseModel(Model):
             logger = logger.logger
         logger = log.create_logger(logger.name)
         # Avoid flooding with 'INFO' log level
-        logger.addFilter(LogLevelLimitFilter(logger, LogLevel.DEBUG))
+        logger.addFilter(log.LogLevelLimitFilter(logger, log.LogLevel.DEBUG))
         engine.logger = logger
 
     def _create_session_factory(self) -> SessionFactory:
         """Internal helper to create and return DB session factory
         which creates session objects to perform DB operations.
         """
-        return sessionmaker(
+        return orm.sessionmaker(
             bind=self._engine,
             autoflush=False,
             expire_on_commit=False,
@@ -205,13 +256,13 @@ class DatabaseModel(Model):
         try:
             with self._engine.connect():
                 self._logger.debug('DB connection is OK')
-        except SQLAlchemyError as e:
+        except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('DB connection error: %s', e)
             raise me from e
 
     @staticmethod
-    def _create_model_error(e: SQLAlchemyError) -> DatabaseModelError:
+    def _create_model_error(e: exc.SQLAlchemyError) -> DatabaseModelError:
         """Internal helper to create model exception from underlying library.
 
         Args:
@@ -222,17 +273,10 @@ class DatabaseModel(Model):
         e.code = None
         return DatabaseModelError(e)
 
-    _is_sqlalchemy_logger_set: bool = False
-
     @staticmethod
-    def _set_sqlalchemy_logger(log: LogManager):
-        """Override logger of the `sqlalchemy` library.
-
-        Args:
-            log (LogManager): Log manager to use for logging.
-        """
-        if not DatabaseModel._is_sqlalchemy_logger_set:
-            sqlalchemy.log.rootlogger = log.create_logger(
-                sqlalchemy.log.rootlogger.name
-            )
-            DatabaseModel._is_sqlalchemy_logger_set = True
+    @utils.call_once
+    def _set_sqlalchemy_logger():
+        """Override logger of the `sqlalchemy` library."""
+        sqlalchemy.log.rootlogger = log.create_logger(
+            sqlalchemy.log.rootlogger.name
+        )

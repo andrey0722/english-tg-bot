@@ -19,15 +19,12 @@ class LogLevel(enum.IntEnum):
     DEBUG = logging.DEBUG
 
 
-Logger = logging.Logger
-
-
 class LogLevelLimitFilter(logging.Filter):
     """Reduces log level of all log records to a specified level. Helps
     to avoid flooding with logs on high log level.
     """
 
-    def __init__(self, logger: Logger, level: LogLevel):
+    def __init__(self, logger: logging.Logger, level: LogLevel):
         """Initialize filer object.
 
         Args:
@@ -49,51 +46,49 @@ class LogLevelLimitFilter(logging.Filter):
         return True
 
 
-class LogManager:
-    """Provides interface for creating and configuring loggers."""
+def setup_logging(level: LogLevel = LogLevel.INFO):
+    """Initialize logging infrastructure for future logging.
 
-    def setup(self, level: LogLevel = LogLevel.INFO):
-        """Initialize logging infrastructure for future logging.
+    Args:
+        level (LogLevel, optional): Desired log level to apply.
+            Defaults to LogLevel.INFO.
+    """
+    logging.basicConfig(level=level, force=True)
+    coloredlogs.install(level=level)
 
-        Args:
-            level (LogLevel, optional): Desired log level to apply.
-                Defaults to LogLevel.INFO.
-        """
-        logging.basicConfig(level=level, force=True)
-        coloredlogs.install(level=level)
 
-    def create_logger(
-        self,
-        obj: Any,
-        level: Optional[LogLevel] = None,
-    ) -> Logger:
-        """Initialize logging infrastructure for future logging.
+def create_logger(
+    obj: Any,
+    level: Optional[LogLevel] = None,
+) -> logging.Logger:
+    """Initialize logging infrastructure for future logging.
 
-        Args:
-            obj (Any): Object to use for name calculation.
-            level (LogLevel, optional): Desired log level to apply.
-                Defaults to LogLevel.INFO.
-        """
-        logger_name = self._get_logger_name(obj)
-        # Delete logger if it exists
-        Logger.manager.loggerDict.pop(logger_name, None)
-        logger = logging.getLogger(logger_name)
-        if level is not None:
-            logger.setLevel(level.value)
-        return logger
+    Args:
+        obj (Any): Object to use for name calculation.
+        level (LogLevel, optional): Desired log level to apply.
+            Defaults to LogLevel.INFO.
+    """
+    logger_name = _get_logger_name(obj)
+    # Delete logger if it exists
+    logging.Logger.manager.loggerDict.pop(logger_name, None)
+    logger = logging.getLogger(logger_name)
+    if level is not None:
+        logger.setLevel(level.value)
+    return logger
 
-    def _get_logger_name(self, obj: Any) -> str:
-        """Internal helper to calculate desired logger name.
 
-        Args:
-            obj (Any): Object to use for name calculation.
-        """
-        if isinstance(obj, str):
-            # User specified a concrete logger name
-            return obj
-        if not hasattr(obj, '__qualname__'):
-            # For plain objects use their types
-            # Functions already have names
-            obj = type(obj)
-        # Use fully-qualified name with module path
-        return f'{obj.__module__}.{obj.__qualname__}'
+def _get_logger_name(obj: Any) -> str:
+    """Internal helper to calculate desired logger name.
+
+    Args:
+        obj (Any): Object to use for name calculation.
+    """
+    if isinstance(obj, str):
+        # User specified a concrete logger name
+        return obj
+    if not hasattr(obj, '__qualname__'):
+        # For plain objects use their types
+        # Functions already have names
+        obj = type(obj)
+    # Use fully-qualified name with module path
+    return f'{obj.__module__}.{obj.__qualname__}'
