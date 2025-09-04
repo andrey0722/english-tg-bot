@@ -3,13 +3,17 @@
 import dataclasses
 from typing import List, Optional
 
+from default_cards import DEFAULT_CARDS
 import log
 from messages import LearningMenu
 from messages import MainMenu
 from messages import Messages
 from model import Model
 from model import Session
+from model.types import EnglishWord
+from model.types import LearningCard
 from model.types import ModelError
+from model.types import RussianWord
 from model.types import User
 from model.types import UserState
 
@@ -200,11 +204,20 @@ class Controller:
         """
         user = message.user
         self._update_user_state(session, user, UserState.LEARNING)
-        return OutputMessage(
+        response = OutputMessage(
             user=user,
             text=Messages.SELECT_LEARNING,
             keyboard=self._get_learning_keyboard(),
         )
+
+        lines = []
+        for card in self._model.get_cards(session, user):
+            lines.append(f'{card.ru_word.text} -> {card.en_word.text}')
+        text = '\n'.join(lines)
+        response.add_paragraph_before(text)
+        response.add_paragraph_before('Cards:')
+
+        return response
 
     @staticmethod
     def _get_learning_keyboard() -> BotKeyboard:
@@ -264,7 +277,23 @@ class Controller:
             # User is now known
             user.state = UserState.NEW_USER
             self._model.add_user(session, user)
+            self._add_default_cards(session, user)
         session.commit()
+
+    def _add_default_cards(self, session: Session, user: User):
+        """Internal helper to add default cards to a user.
+
+        Args:
+            session (Session): Session object.
+            user (User): A bot user.
+        """
+        for ru, en in DEFAULT_CARDS:
+            ru_word = self._model.add_word(session, RussianWord(text=ru))
+            en_word = self._model.add_word(session, EnglishWord(text=en))
+            card = LearningCard(ru_word=ru_word, en_word=en_word)
+            card = self._model.add_card(session, card)
+            user.cards.append(card)
+            session.commit()
 
     def _delete_user(self, session: Session, user: User) -> bool:
         """Internal helper to delete user from the model.

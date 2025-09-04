@@ -1,16 +1,20 @@
 """Defines a database data model."""
 
 import dataclasses
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 from sqlalchemy import exc
 from sqlalchemy import orm
 import sqlalchemy as sa
 import sqlalchemy.log
+from sqlalchemy.sql import functions as func
 
 import log
 import utils
 
+from .types import BaseWord
+from .types import BaseWordT
+from .types import LearningCard
 from .types import ModelBaseType
 from .types import ModelError
 from .types import User
@@ -115,7 +119,7 @@ class DatabaseModel:
 
     def add_user(self, session: Session, user: User):
         """Adds new user into the model. Input object could be
-        modified in-place to respect model changes.
+        modified in-place to respect current model state.
 
         Args:
             session (Session): Session object.
@@ -186,6 +190,124 @@ class DatabaseModel:
         else:
             self._logger.warning('No user %s, cannot delete', user_id)
         return user
+
+    def add_word(self, session: Session, word: BaseWordT) -> BaseWordT:
+        """Adds new word into the model or extracts an existing one. Input
+        object could be modified in-place to respect current model state.
+
+        Args:
+            session (Session): Session object.
+            word (BaseWordT): Word object.
+
+        Returns:
+            BaseWordT: Word object now associated with `session`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Adding word %r', word)
+        try:
+            # Extract existing word if any
+            stmt = sa.select(BaseWord).where(
+                BaseWord.text == word.text,
+                BaseWord.language == word.language,
+            )
+            if existing := session.scalar(stmt):
+                self._logger.debug('Word exists: %r', word)
+                # Update input object with data from DB
+                word.id = existing.id
+                return session.merge(word)
+            else:
+                # Word doesn't exist, create it
+                session.add(word)
+                self._logger.debug('Added word %r', word)
+                return word
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Add error: word=%r, error=%s', word, e)
+            raise me from e
+
+    def add_card(self, session: Session, card: LearningCard) -> LearningCard:
+        """Adds new card into the model or extracts an existing one. Input
+        object could be modified in-place to respect current model state.
+
+        Args:
+            session (Session): Session object.
+            card (LearningCard): Card object.
+
+        Returns:
+            LearningCard: Card object now associated with `session`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Adding card %r', card)
+        try:
+            # Extract existing card if any
+            stmt = sa.select(LearningCard).where(
+                LearningCard.ru_word_id == card.ru_word.id,
+                LearningCard.en_word_id == card.en_word.id,
+            )
+            if existing := session.scalar(stmt):
+                self._logger.debug('Card exists: %r', card)
+                # Update input object with data from DB
+                card.id = existing.id
+                card.ru_word_id = existing.ru_word_id
+                card.en_word_id = existing.en_word_id
+                return session.merge(card)
+            else:
+                # Card doesn't exist, create it
+                session.add(card)
+                self._logger.debug('Added card %r', card)
+                return card
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Add error: card=%r, error=%s', card, e)
+            raise me from e
+
+    def get_cards(
+        self,
+        session: Session,
+        user: User,
+    ) -> Iterable[LearningCard]:
+        """Extracts a list of all learning cards for a user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Iterable[LearningCard]: Learning cards for the user.
+        """
+        self._logger.debug('Extracting cards for %r', user)
+        try:
+            # Get card number first
+            stmt = (
+                sa.select(func.count())
+                .join(User.cards)
+                .where(User.id == user.id)
+            )
+            count = session.scalar(stmt) or 0
+
+            # Now extract user cards in batches
+            stmt = (
+                sa.select(LearningCard)
+                .join(User.cards)
+                .where(User.id == user.id)
+                .options(
+                    orm.joinedload(LearningCard.ru_word),
+                    orm.joinedload(LearningCard.en_word),
+                )
+                .execution_options(yield_per=20)
+            )
+            cards = session.scalars(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Get cards error: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Extracted %d cards for %r', count, user)
+        return cards
 
     def _create_tables(self):
         """Internal helper to create tables for all entities in the DB."""

@@ -1,13 +1,14 @@
 """This module defines basic types that stores application data."""
 
 import enum
-from typing import Optional
+from typing import List, Optional, TypeVar
 
 from sqlalchemy import orm
 import sqlalchemy as sa
+from sqlalchemy.orm import Mapped
 
 
-class ModelBaseType(orm.DeclarativeBase):
+class ModelBaseType(orm.MappedAsDataclass, orm.DeclarativeBase):
     """Base class for all types used by model."""
 
 
@@ -20,18 +21,40 @@ class UserState(enum.StrEnum):
     LEARNING = enum.auto()
 
 
-class User(orm.MappedAsDataclass, ModelBaseType):
+user_card_association = sa.Table(
+    'user_card',
+    ModelBaseType.metadata,
+    sa.Column(
+        'user_id',
+        sa.ForeignKey('user.id', ondelete='CASCADE'),
+        primary_key=True,
+    ),
+    sa.Column(
+        'card_id',
+        sa.ForeignKey('card.id', ondelete='CASCADE'),
+        primary_key=True,
+    ),
+)
+
+
+class User(ModelBaseType):
     """Represents one particular user of the bot."""
 
     __tablename__ = 'user'
 
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
-    username: orm.Mapped[Optional[str]] = orm.mapped_column(sa.String(32))
-    first_name: orm.Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
-    last_name: orm.Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
-    state: orm.Mapped = orm.mapped_column(
+    id: Mapped[int] = orm.mapped_column(primary_key=True)
+    username: Mapped[Optional[str]] = orm.mapped_column(sa.String(32))
+    first_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    last_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    state: Mapped = orm.mapped_column(
         sa.Enum(UserState, name='userstate', metadata=ModelBaseType.metadata),
         default=UserState.UNKNOWN_STATE,
+    )
+
+    cards: Mapped[List['LearningCard']] = orm.relationship(
+        secondary=user_card_association,
+        init=False,
+        repr=False,
     )
 
     @property
@@ -43,6 +66,57 @@ class User(orm.MappedAsDataclass, ModelBaseType):
 
     def __str__(self):
         return self.display_name
+
+
+class BaseWord(ModelBaseType):
+    """Represents a word of any language."""
+
+    __tablename__ = 'word'
+    __mapper_args__ = {'polymorphic_on': 'language'}
+    __table_args__ = (sa.UniqueConstraint('text', 'language'),)
+
+    id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    text: Mapped[str] = orm.mapped_column(sa.String(64))
+    language: Mapped[str] = orm.mapped_column(init=False)
+
+
+BaseWordT = TypeVar('BaseWordT', bound=BaseWord)
+
+
+class EnglishWord(BaseWord):
+    """Represents an english word for a learning card."""
+
+    __mapper_args__ = {'polymorphic_identity': 'en'}
+
+
+class RussianWord(BaseWord):
+    """Represents a russian word for a learning card."""
+
+    __mapper_args__ = {'polymorphic_identity': 'ru'}
+
+
+class LearningCard(ModelBaseType):
+    """Repsents a learning card for a user."""
+
+    __tablename__ = 'card'
+    __table_args__ = (sa.UniqueConstraint('ru_word_id', 'en_word_id'),)
+
+    id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    ru_word_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('word.id'),
+        init=False,
+    )
+    en_word_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('word.id'),
+        init=False,
+    )
+
+    ru_word: Mapped['RussianWord'] = orm.relationship(
+        foreign_keys=[ru_word_id],
+    )
+    en_word: Mapped['EnglishWord'] = orm.relationship(
+        foreign_keys=[en_word_id],
+    )
 
 
 class ModelError(Exception):
