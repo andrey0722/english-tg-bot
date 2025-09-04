@@ -10,10 +10,10 @@ from messages import MainMenu
 from messages import Messages
 from model import Model
 from model import Session
-from model.types import AddWordProgress
 from model.types import EnglishWord
 from model.types import LearningCard
 from model.types import ModelError
+from model.types import NewCardProgress
 from model.types import RussianWord
 from model.types import User
 from model.types import UserState
@@ -142,8 +142,8 @@ class Controller:
                         return self._respond_main_menu(session, message)
                     case UserState.LEARNING:
                         return self._respond_learning(session, message)
-                    case UserState.ADDING_WORD:
-                        return self._respond_add_word(session, message)
+                    case UserState.ADDING_CARD:
+                        return self._respond_new_card(session, message)
         except ModelError as e:
             self._logger.error('Model error while responding: %s', e)
             return OutputMessage(user, Messages.BOT_ERROR)
@@ -202,8 +202,8 @@ class Controller:
         match text:
             case MainMenu.LEARN:
                 return self._start_learning(session, message)
-            case MainMenu.ADD_WORD:
-                return self._start_add_word(session, message)
+            case MainMenu.ADD_CARD:
+                return self._start_new_card(session, message)
             case _:
                 self._logger.info('Unknown main menu option: %s', text)
 
@@ -275,12 +275,12 @@ class Controller:
             case _:
                 self._logger.info('Unknown learning menu option: %s', text)
 
-    def _start_add_word(
+    def _start_new_card(
         self,
         session: Session,
         message: InputMessage,
     ) -> OutputMessage:
-        """Internal helper that starts add word procedure.
+        """Internal helper that starts add new learning card procedure.
 
         Args:
             session (Session): Session object.
@@ -290,19 +290,16 @@ class Controller:
             OutputMessage: Bot response to the user.
         """
         user = message.user
-        self._update_user_state(session, user, UserState.ADDING_WORD)
-        return OutputMessage(
-            user=user,
-            text=Messages.ENTER_RU_WORD,
-        )
+        self._update_user_state(session, user, UserState.ADDING_CARD)
+        return OutputMessage(user=user, text=Messages.ENTER_RU_WORD)
 
-    def _respond_add_word(
+    def _respond_new_card(
         self,
         session: Session,
         message: InputMessage,
     ) -> Optional[OutputMessage]:
         """Internal helper that checks and processes user input when adding
-        new words.
+        new learning card.
 
         Args:
             session (Session): Session object.
@@ -315,11 +312,11 @@ class Controller:
         text = message.text
         self._logger.info('User %s word input: %s', user, text)
 
-        if progress := self._model.get_add_word_progress(session, user):
-            self._logger.debug('Current word progress: %r', progress)
+        if progress := self._model.get_new_card_progress(session, user):
+            self._logger.debug('Current new card progress: %r', progress)
 
             # Delete user progress
-            user.add_word_progress = None
+            user.new_card_progress = None
 
             # Add new card for user
             card = self._add_card(session, progress.ru_word, text)
@@ -335,10 +332,10 @@ class Controller:
         else:
             # Save user progress
             ru_word = self._model.add_word(session, RussianWord(text=text))
-            progress = AddWordProgress(user=user, ru_word=ru_word)
-            session.add(progress)
+            progress = NewCardProgress(user=user, ru_word=ru_word)
+            self._model.add_new_card_progress(session, progress)
             self._model.commit(session)
-            self._logger.debug('Saved add word progress: %r', progress)
+            self._logger.debug('Saved new card progress: %r', progress)
             response = OutputMessage(user=user, text=Messages.ENTER_EN_WORD)
 
         return response

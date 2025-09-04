@@ -12,12 +12,12 @@ from sqlalchemy.sql import functions as func
 import log
 import utils
 
-from .types import AddWordProgress
 from .types import BaseWord
 from .types import BaseWordT
 from .types import LearningCard
 from .types import ModelBaseType
 from .types import ModelError
+from .types import NewCardProgress
 from .types import User
 from .types import UserNotFoundError
 
@@ -330,32 +330,61 @@ class DatabaseModel:
         self._logger.debug('Extracted %d cards for %r', count, user)
         return cards
 
-    def get_add_word_progress(
+    def add_new_card_progress(
+        self,
+        session: Session,
+        progress: NewCardProgress,
+    ) -> NewCardProgress:
+        """Save a new card progress instance for user.
+
+        Args:
+            session (Session): Session object.
+            progress (NewCardProgress): New card progress object.
+
+        Returns:
+            NewCardProgress: Progress object now associated with `session`.
+        """
+        self._logger.debug('Saving: %r', progress)
+        try:
+            session.add(progress)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug(
+                'Add new card progress: progress=%r, error=%s',
+                progress,
+                e,
+            )
+            raise me from e
+
+        self._logger.debug('Saved: %r', progress)
+        return progress
+
+    def get_new_card_progress(
         self,
         session: Session,
         user: User,
-    ) -> Optional[AddWordProgress]:
-        """For given user return theirs add word progress.
+    ) -> Optional[NewCardProgress]:
+        """For given user return theirs add new card progress.
 
         Args:
             session (Session): Session object.
             user (User): User object.
 
         Returns:
-            Optional[AddWordProgress]: Add word progress if any.
+            Optional[NewCardProgress]: New card progress if any.
         """
-        self._logger.debug('Extracting add word progress for %r', user)
+        self._logger.debug('Extracting new card progress for %r', user)
         try:
             stmt = (
-                sa.select(AddWordProgress)
-                .where(AddWordProgress.user_id == user.id)
-                .options(orm.joinedload(AddWordProgress.ru_word))
+                sa.select(NewCardProgress)
+                .where(NewCardProgress.user_id == user.id)
+                .options(orm.joinedload(NewCardProgress.ru_word))
             )
             progress = session.scalar(stmt)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug(
-                'Get add progress error: user=%r, error=%s',
+                'Get new card progress error: user=%r, error=%s',
                 user,
                 e,
             )

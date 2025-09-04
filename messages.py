@@ -8,7 +8,7 @@ class MainMenu(enum.StrEnum):
     """Commands in main menu."""
 
     LEARN = 'Учиться'
-    ADD_WORD = 'Добавить слово'
+    ADD_CARD = 'Добавить новое слово'
 
 
 @enum.unique
