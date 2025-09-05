@@ -8,6 +8,7 @@ class MainMenu(enum.StrEnum):
     """Commands in main menu."""
 
     LEARN = 'Учиться'
+    ADD_WORD = 'Добавить слово'
 
 
 @enum.unique
@@ -29,3 +30,6 @@ class Messages(enum.StrEnum):
     SELECT_MAIN_MENU = 'Выберите вариант из меню ниже:'
     SELECT_LEARNING = 'Ну и что будем делать?'
     FINISHED_LEARNING = 'Обучение завершено.'
+    ENTER_RU_WORD = 'Введите новое слово 🇷🇺:'
+    ENTER_EN_WORD = 'Введите его перевод 🇬🇧:'
+    ADDED_RU_EN_CARD = 'Добавлена новая карточка:\n\n🇷🇺 {}\n🇬🇧 {}'

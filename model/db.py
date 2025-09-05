@@ -12,6 +12,7 @@ from sqlalchemy.sql import functions as func
 import log
 import utils
 
+from .types import AddWordProgress
 from .types import BaseWord
 from .types import BaseWordT
 from .types import LearningCard
@@ -72,6 +73,22 @@ class DatabaseModel:
             Session: Session object.
         """
         return self._create_session()
+
+    def commit(self, session: Session):
+        """Saves pending changes into the model.
+
+        Args:
+            session (Session): Session object.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        try:
+            session.commit()
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Commit error: %s', e)
+            raise me from e
 
     def user_exists(self, session: Session, user_id: int) -> bool:
         """Checks whether the model contains user with specified Telegram id.
@@ -138,12 +155,15 @@ class DatabaseModel:
 
         self._logger.debug('Added user %r', user)
 
-    def update_user(self, session: Session, user: User):
+    def update_user(self, session: Session, user: User) -> User:
         """Updates existing user info in the model.
 
         Args:
             session (Session): Session object.
             user (User): User object.
+
+        Returns:
+            User: User object now associated with `session`.
 
         Raises:
             UserNotFoundError: The user is not found in the model.
@@ -153,13 +173,14 @@ class DatabaseModel:
         try:
             if session.get(User, user.id) is None:
                 raise UserNotFoundError(f'User {user!r} does not exist')
-            session.merge(user)
+            result = session.merge(user)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Update error: user=%r, error=%s', user, e)
             raise me from e
 
-        self._logger.debug('Updated user %r', user)
+        self._logger.debug('Updated user %r', result)
+        return result
 
     def delete_user(self, session: Session, user_id: int) -> Optional[User]:
         """Deletes user from the model.
@@ -308,6 +329,40 @@ class DatabaseModel:
 
         self._logger.debug('Extracted %d cards for %r', count, user)
         return cards
+
+    def get_add_word_progress(
+        self,
+        session: Session,
+        user: User,
+    ) -> Optional[AddWordProgress]:
+        """For given user return theirs add word progress.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Optional[AddWordProgress]: Add word progress if any.
+        """
+        self._logger.debug('Extracting add word progress for %r', user)
+        try:
+            stmt = (
+                sa.select(AddWordProgress)
+                .where(AddWordProgress.user_id == user.id)
+                .options(orm.joinedload(AddWordProgress.ru_word))
+            )
+            progress = session.scalar(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug(
+                'Get add progress error: user=%r, error=%s',
+                user,
+                e,
+            )
+            raise me from e
+
+        self._logger.debug('Extracted: %r', progress)
+        return progress
 
     def _create_tables(self):
         """Internal helper to create tables for all entities in the DB."""

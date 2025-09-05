@@ -19,6 +19,7 @@ class UserState(enum.StrEnum):
     NEW_USER = enum.auto()
     MAIN_MENU = enum.auto()
     LEARNING = enum.auto()
+    ADDING_WORD = enum.auto()
 
 
 user_card_association = sa.Table(
@@ -53,6 +54,13 @@ class User(ModelBaseType):
 
     cards: Mapped[List['LearningCard']] = orm.relationship(
         secondary=user_card_association,
+        init=False,
+        repr=False,
+    )
+
+    add_word_progress: Mapped[Optional['AddWordProgress']] = orm.relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
         init=False,
         repr=False,
     )
@@ -117,6 +125,25 @@ class LearningCard(ModelBaseType):
     en_word: Mapped['EnglishWord'] = orm.relationship(
         foreign_keys=[en_word_id],
     )
+
+
+class AddWordProgress(ModelBaseType):
+    """Holds user input persistently when adding a new word."""
+
+    __tablename__ = 'add_word_progress'
+
+    user_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('user.id'),
+        primary_key=True,
+        init=False,
+    )
+    ru_word_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('word.id'),
+        init=False,
+    )
+
+    user: Mapped['User'] = orm.relationship(back_populates='add_word_progress')
+    ru_word: Mapped['RussianWord'] = orm.relationship()
 
 
 class ModelError(Exception):
