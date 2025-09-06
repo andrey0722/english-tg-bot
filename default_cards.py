@@ -85,7 +85,7 @@ DEFAULT_CARDS: List[Tuple[str, str]] = [
     ('сыр', 'cheese'),
     ('помидор', 'tomato'),
     ('яблоко', 'apple'),
-    ('апельсин', 'orage'),
+    ('апельсин', 'orange'),
     ('банан', 'banana'),
     ('коробка', 'box'),
     ('мужчина', 'man'),

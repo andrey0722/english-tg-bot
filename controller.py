@@ -379,7 +379,7 @@ class Controller:
         answer = card.en_word.text
         new_plan = None
 
-        if text == answer:
+        if self._preprocess_user_input(text) == answer:
             # The card is done, delete it from learning plan
             self._model.delete_learning_plan(session, user, plan)
             self._increment_succeeded(session, user)
@@ -547,7 +547,7 @@ class Controller:
             response.add_paragraph_before(text)
         else:
             # Save user progress
-            ru_word = self._model.add_word(session, RussianWord(text=text))
+            ru_word = self._add_ru_word(session, text)
             progress = NewCardProgress(user=user, ru_word=ru_word)
             self._model.add_new_card_progress(session, progress)
             self._model.commit(session)
@@ -555,6 +555,18 @@ class Controller:
             response = OutputMessage(user=user, text=Messages.ENTER_EN_WORD)
 
         return response
+
+    @staticmethod
+    def _preprocess_user_input(text: str) -> str:
+        """Process text from user input to work with later.
+
+        Args:
+            text (str): User input text.
+
+        Returns:
+            str: Preprocessed text.
+        """
+        return text.strip().lower()
 
     def _preprocess_user(self, session: Session, user: User) -> User:
         """Internal helper to process input user object using the model.
@@ -626,6 +638,7 @@ class Controller:
         Returns:
             RussianWord: Word object from the model.
         """
+        text = self._preprocess_user_input(text)
         return self._model.add_word(session, RussianWord(text=text))
 
     def _add_en_word(self, session: Session, text: str) -> EnglishWord:
@@ -638,6 +651,7 @@ class Controller:
         Returns:
             EnglishWord: Word object from the model.
         """
+        text = self._preprocess_user_input(text)
         return self._model.add_word(session, EnglishWord(text=text))
 
     def _delete_user(self, session: Session, user: User) -> bool:
