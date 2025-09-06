@@ -381,7 +381,8 @@ class Controller:
             self._delete_plan(session, plan)
             text = Messages.SKIPPED_TRANSLATION
         elif text == LearningMenu.DELETE:
-            self._model.delete_user_card(session, user, card)
+            self._delete_plan(session, plan)
+            self._model.delete_user_card(user, card)
             self._model.commit(session)
             text = Messages.DELETED_RU_EN_CARD.format(question, answer)
         else:

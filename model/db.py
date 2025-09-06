@@ -289,46 +289,27 @@ class DatabaseModel:
 
     def delete_user_card(
         self,
-        session: Session,
         user: User,
         card: LearningCard,
-    ) -> bool:
+    ):
         """Delete a particular learning card for a user.
 
         Args:
-            session (Session): Session object.
             user (User): User object.
             card (LearningCard): Card object.
-
-        Returns:
-            bool: `True` when the card was actually deleted from user,
-                `False` when user didn't have that card.
 
         Raises:
             ModelError: Model operational error.
         """
         self._logger.debug('Deleting card %r from %r', card, user)
         try:
-            # If deleted the card return its id
-            stmt = (
-                user.cards.delete()
-                .where(LearningCard.id == card.id)
-                .returning(LearningCard.id)
-            )
-            card_id = session.scalar(stmt)
+            user.cards.remove(card)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Add error: card=%r, error=%s', card, e)
             raise me from e
 
-        result = card_id is not None
-        self._logger.debug(
-            'Deleted card %r from %r, result: %s',
-            card,
-            user,
-            result,
-        )
-        return result
+        self._logger.debug('Deleted card %r from %r', card, user)
 
     def get_card_number(self, session: Session, user: User) -> int:
         """Extracts a number of all learning cards for a user.

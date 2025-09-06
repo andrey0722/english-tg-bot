@@ -55,6 +55,7 @@ class User(ModelBaseType):
 
     cards: WriteOnlyMapped['LearningCard'] = orm.relationship(
         secondary=user_card_association,
+        passive_deletes=True,
         init=False,
         repr=False,
     )
@@ -62,6 +63,7 @@ class User(ModelBaseType):
     learning_plan: WriteOnlyMapped['LearningPlan'] = orm.relationship(
         back_populates='user',
         cascade='all, delete-orphan',
+        passive_deletes=True,
         init=False,
         repr=False,
     )
@@ -119,12 +121,12 @@ class LearningCard(ModelBaseType):
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
     ru_word_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('word.id'),
+        sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
         repr=False,
     )
     en_word_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('word.id'),
+        sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
         repr=False,
     )
@@ -136,6 +138,19 @@ class LearningCard(ModelBaseType):
     en_word: Mapped['EnglishWord'] = orm.relationship(
         foreign_keys=[en_word_id],
         lazy='joined',
+    )
+
+    plans: Mapped[List['LearningPlan']] = orm.relationship(
+        back_populates='card',
+        cascade='all, delete-orphan',
+        init=False,
+        repr=False,
+    )
+    options: Mapped[List['LearningOption']] = orm.relationship(
+        back_populates='card',
+        cascade='all, delete-orphan',
+        init=False,
+        repr=False,
     )
 
 
@@ -150,17 +165,20 @@ class LearningPlan(ModelBaseType):
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
     user_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('user.id'),
+        sa.ForeignKey('user.id', ondelete='CASCADE'),
         init=False,
     )
     card_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('card.id'),
+        sa.ForeignKey('card.id', ondelete='CASCADE'),
         init=False,
     )
     answer_position: Mapped[int] = orm.mapped_column()
 
     user: Mapped['User'] = orm.relationship(back_populates='learning_plan')
-    card: Mapped['LearningCard'] = orm.relationship(lazy='joined')
+    card: Mapped['LearningCard'] = orm.relationship(
+        back_populates='plans',
+        lazy='joined',
+    )
     options: Mapped[List['LearningOption']] = orm.relationship(
         back_populates='plan',
         cascade='all, delete-orphan',
@@ -179,12 +197,12 @@ class LearningOption(ModelBaseType):
     __tablename__ = 'learning_option'
 
     plan_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('learning_plan.id'),
+        sa.ForeignKey('learning_plan.id', ondelete='CASCADE'),
         primary_key=True,
         init=False,
     )
     card_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('card.id'),
+        sa.ForeignKey('card.id', ondelete='CASCADE'),
         primary_key=True,
         init=False,
     )
@@ -193,7 +211,10 @@ class LearningOption(ModelBaseType):
         back_populates='options',
         init=False,
     )
-    card: Mapped['LearningCard'] = orm.relationship()
+    card: Mapped['LearningCard'] = orm.relationship(
+        back_populates='options',
+        lazy='joined',
+    )
 
 
 class NewCardProgress(ModelBaseType):
@@ -202,12 +223,12 @@ class NewCardProgress(ModelBaseType):
     __tablename__ = 'new_card_progress'
 
     user_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('user.id'),
+        sa.ForeignKey('user.id', ondelete='CASCADE'),
         primary_key=True,
         init=False,
     )
     ru_word_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('word.id'),
+        sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
     )
 
