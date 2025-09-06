@@ -104,7 +104,7 @@ class RussianWord(BaseWord):
 
 
 class LearningCard(ModelBaseType):
-    """Repsents a learning card for a user."""
+    """Represents a learning card for a user."""
 
     __tablename__ = 'card'
     __table_args__ = (sa.UniqueConstraint('ru_word_id', 'en_word_id'),)
