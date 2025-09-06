@@ -68,6 +68,13 @@ class User(ModelBaseType):
         repr=False,
     )
 
+    learning_progress: Mapped[Optional['LearningProgress']] = orm.relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
+        init=False,
+        repr=False,
+    )
+
     new_card_progress: Mapped[Optional['NewCardProgress']] = orm.relationship(
         back_populates='user',
         cascade='all, delete-orphan',
@@ -217,6 +224,23 @@ class LearningOption(ModelBaseType):
     )
 
 
+class LearningProgress(ModelBaseType):
+    """Holds user progress during a learning session."""
+
+    __tablename__ = 'learning_progress'
+
+    user_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('user.id', ondelete='CASCADE'),
+        primary_key=True,
+        init=False,
+    )
+    succeeded_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+    failed_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+    skipped_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+
+    user: Mapped['User'] = orm.relationship(back_populates='learning_progress')
+
+
 class NewCardProgress(ModelBaseType):
     """Holds user input persistently when adding a new learning card."""
 
@@ -233,7 +257,7 @@ class NewCardProgress(ModelBaseType):
     )
 
     user: Mapped['User'] = orm.relationship(back_populates='new_card_progress')
-    ru_word: Mapped['RussianWord'] = orm.relationship()
+    ru_word: Mapped['RussianWord'] = orm.relationship(lazy='joined')
 
 
 class ModelError(Exception):

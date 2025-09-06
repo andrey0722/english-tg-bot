@@ -15,6 +15,7 @@ from model.types import EnglishWord
 from model.types import LearningCard
 from model.types import LearningOption
 from model.types import LearningPlan
+from model.types import LearningProgress
 from model.types import ModelError
 from model.types import NewCardProgress
 from model.types import RussianWord
@@ -226,14 +227,18 @@ class Controller:
         """
         user = message.user
         self._model.delete_learning_plan(session, user)
+        self._reset_learning_progress(session, user)
 
+        req_count = LearningPlan.OPTIONS_COUNT + 1
         card_number = self._model.get_card_number(session, user)
-        if card_number <= LearningPlan.OPTIONS_COUNT:
+        if card_number < req_count:
             # User doesn't have enough cards
             response = self._start_main_menu(session, message)
-            response.add_paragraph_before(Messages.NO_LEARNING_CARDS)
+            text = Messages.NO_LEARNING_CARDS.format(card_number, req_count)
+            response.add_paragraph_before(text)
             return response
 
+        text = Messages.PLAN_LEARNING_COUNT.format(card_number)
         self._update_user_state(session, user, UserState.LEARNING)
 
         # Prepare learning cards in random order
@@ -242,7 +247,9 @@ class Controller:
         self._model.commit(session)
 
         # Show the first card
-        return self._show_learning_card(session, message)
+        response = self._show_learning_card(session, message)
+        response.add_paragraph_before(text)
+        return response
 
     def _add_plan_for_card(
         self,
@@ -374,34 +381,86 @@ class Controller:
 
         if text == answer:
             # The card is done, delete it from learning plan
-            self._delete_plan(session, plan)
+            self._model.delete_learning_plan(session, user, plan)
+            self._increment_succeeded(session, user)
             text = Messages.CORRECT_TRANSLATION.format(question, answer)
         elif text == LearningMenu.SKIP:
             # Skip the card
-            self._delete_plan(session, plan)
+            self._model.delete_learning_plan(session, user, plan)
+            self._increment_skipped(session, user)
             text = Messages.SKIPPED_TRANSLATION
         elif text == LearningMenu.DELETE:
-            self._delete_plan(session, plan)
+            self._model.delete_learning_plan(session, user, plan)
             self._model.delete_user_card(user, card)
-            self._model.commit(session)
             text = Messages.DELETED_RU_EN_CARD.format(question, answer)
         else:
             # Just repeat the last card
             new_plan = plan
+            self._increment_failed(session, user)
             text = Messages.WRONG_TRANSLATION
+        self._model.commit(session)
         response = self._show_learning_card(session, message, new_plan)
         response.add_paragraph_before(text)
         return response
 
-    def _delete_plan(self, session: Session, plan: LearningPlan):
-        """Internal helper to delete learning plan record.
+    def _get_learning_progress(
+        self,
+        session: Session,
+        user: User,
+    ) -> LearningProgress:
+        """Internal helper that retrieves learning progress for user.
 
         Args:
             session (Session): Session object.
-            plan (LearningPlan): Learning plan object.
+            user (User): User object.
         """
-        self._model.delete_learning_plan(session, plan.user, plan)
-        self._model.commit(session)
+        progress = self._model.get_learning_progress(session, user)
+        if progress is None:
+            progress = LearningProgress(user=user)
+        return progress
+
+    def _increment_succeeded(self, session: Session, user: User):
+        """Internal helper that increments the success count for user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+        """
+        progress = self._get_learning_progress(session, user)
+        progress.succeeded_count += 1
+        self._model.update_learning_progress(session, progress)
+
+    def _increment_failed(self, session: Session, user: User):
+        """Internal helper that increments the fail count for user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+        """
+        progress = self._get_learning_progress(session, user)
+        progress.failed_count += 1
+        self._model.update_learning_progress(session, progress)
+
+    def _increment_skipped(self, session: Session, user: User):
+        """Internal helper that increments the fail count for user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+        """
+        progress = self._get_learning_progress(session, user)
+        progress.skipped_count += 1
+        self._model.update_learning_progress(session, progress)
+
+    def _reset_learning_progress(self, session: Session, user: User):
+        """Internal helper that resets learning progress for user to zero.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+        """
+        progress = LearningProgress(user=user)
+        self._model.update_learning_progress(session, progress)
 
     def _finish_learning(
         self,
@@ -417,9 +476,16 @@ class Controller:
         Returns:
             OutputMessage: Bot response to the user.
         """
-        self._model.delete_learning_plan(session, message.user)
+        user = message.user
+        self._model.delete_learning_plan(session, user)
         response = self._start_main_menu(session, message)
-        response.add_paragraph_before(Messages.FINISHED_LEARNING)
+        progress = self._get_learning_progress(session, user)
+        text = Messages.FINISHED_LEARNING.format(
+            progress.succeeded_count,
+            progress.skipped_count,
+            progress.failed_count,
+        )
+        response.add_paragraph_before(text)
         return response
 
     def _start_new_card(
@@ -461,9 +527,7 @@ class Controller:
 
         if progress := self._model.get_new_card_progress(session, user):
             self._logger.debug('Current new card progress: %r', progress)
-
-            # Delete user progress
-            user.new_card_progress = None
+            self._model.delete_new_card_progress(session, user)
 
             # Add new card for user
             card = self._add_card(session, progress.ru_word, text)
@@ -474,7 +538,12 @@ class Controller:
                 card.en_word.text,
             )
 
+            # Count total card count for user
+            count = self._model.get_card_number(session, user)
+            text_count = Messages.NEW_LEARNING_COUNT.format(count)
+
             response = self._start_main_menu(session, message)
+            response.add_paragraph_before(text_count)
             response.add_paragraph_before(text)
         else:
             # Save user progress

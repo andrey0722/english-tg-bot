@@ -16,6 +16,7 @@ from .types import BaseWord
 from .types import BaseWordT
 from .types import LearningCard
 from .types import LearningPlan
+from .types import LearningProgress
 from .types import ModelBaseType
 from .types import ModelError
 from .types import NewCardProgress
@@ -519,6 +520,71 @@ class DatabaseModel:
         self._logger.debug('Extracted: %r', plan)
         return plan
 
+    def get_learning_progress(
+        self,
+        session: Session,
+        user: User,
+    ) -> Optional[LearningProgress]:
+        """For given user return theirs learning progress.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Optional[LearningProgress]: Learning progress object if any.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Extracting learning progress for %r', user)
+        try:
+            stmt = sa.select(LearningProgress).where(
+                LearningProgress.user_id == user.id
+            )
+            progress = session.scalar(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug(
+                'Get learning progress error: user=%r, error=%s',
+                user,
+                e,
+            )
+            raise me from e
+
+        self._logger.debug('Extracted: %r', progress)
+        return progress
+
+    def update_learning_progress(
+        self,
+        session: Session,
+        progress: LearningProgress,
+    ) -> LearningProgress:
+        """Updates learning progress in the model. If doesn't exist
+        already then add new progress instance into the model.
+
+        Args:
+            session (Session): Session object.
+            progress (LearningProgress): Learning progress object.
+
+        Returns:
+            LearningProgress: Learning progress object
+                now associated with `session`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Updating: %r', progress)
+        try:
+            result = session.merge(progress)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Update error: %r, error=%s', progress, e)
+            raise me from e
+
+        self._logger.debug('Updated: %r', progress)
+        return result
+
     def add_new_card_progress(
         self,
         session: Session,
@@ -570,10 +636,8 @@ class DatabaseModel:
         """
         self._logger.debug('Extracting new card progress for %r', user)
         try:
-            stmt = (
-                sa.select(NewCardProgress)
-                .where(NewCardProgress.user_id == user.id)
-                .options(orm.joinedload(NewCardProgress.ru_word))
+            stmt = sa.select(NewCardProgress).where(
+                NewCardProgress.user_id == user.id
             )
             progress = session.scalar(stmt)
         except exc.SQLAlchemyError as e:
@@ -586,6 +650,44 @@ class DatabaseModel:
             raise me from e
 
         self._logger.debug('Extracted: %r', progress)
+        return progress
+
+    def delete_new_card_progress(
+        self,
+        session: Session,
+        user: User,
+    ) -> Optional[NewCardProgress]:
+        """For given user delete theirs add new card progress.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Optional[NewCardProgress]: New card progress deleted
+                from the model if any.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Deleting new card progress for %r', user)
+        try:
+            stmt = (
+                sa.delete(NewCardProgress)
+                .where(NewCardProgress.user_id == user.id)
+                .returning(NewCardProgress)
+            )
+            progress = session.scalar(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug(
+                'Delete new card progress error: user=%r, error=%s',
+                user,
+                e,
+            )
+            raise me from e
+
+        self._logger.debug('Deleted: %r', progress)
         return progress
 
     def _create_tables(self):
