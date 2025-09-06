@@ -242,8 +242,9 @@ class Controller:
         self._update_user_state(session, user, UserState.LEARNING)
 
         # Prepare learning cards in random order
-        for card in self._model.get_random_cards(session, user):
-            self._add_plan_for_card(session, user, card)
+        cards = self._model.get_random_cards(session, user)
+        for index, card in enumerate(cards):
+            self._add_plan_for_card(session, user, index, card)
         self._model.commit(session)
 
         # Show the first card
@@ -255,6 +256,7 @@ class Controller:
         self,
         session: Session,
         user: User,
+        index: int,
         card: LearningCard,
     ):
         """Internal helper that creates and stores new plan record for
@@ -263,16 +265,18 @@ class Controller:
         Args:
             session (Session): Session object.
             user (User): User object.
+            index (int): Positional index of this card in learning session.
             card (LearningCard): Learning card object.
         """
         # Randomize answer location
-        position = random.randrange(LearningPlan.OPTIONS_COUNT + 1)
+        answer_position = random.randrange(LearningPlan.OPTIONS_COUNT + 1)
         options = self._get_options_for_card(session, user, card)
         plan = LearningPlan(
+            index=index,
             user=user,
             card=card,
             options=options,
-            answer_position=position,
+            answer_position=answer_position,
         )
         self._model.add_learning_plan(session, plan)
 

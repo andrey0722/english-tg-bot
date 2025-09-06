@@ -169,12 +169,14 @@ class LearningPlan(ModelBaseType):
     """
 
     __tablename__ = 'learning_plan'
+    __table_args__ = (sa.UniqueConstraint('user_id', 'index'),)
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
     user_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('user.id', ondelete='CASCADE'),
         init=False,
     )
+    index: Mapped[int] = orm.mapped_column()
     card_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('card.id', ondelete='CASCADE'),
         init=False,

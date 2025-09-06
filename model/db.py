@@ -510,7 +510,7 @@ class DatabaseModel:
         self._logger.debug('Extracting plan for %r', user)
         try:
             # Extract plan records in exact order
-            stmt = user.learning_plan.select().order_by(LearningPlan.id)
+            stmt = user.learning_plan.select().order_by(LearningPlan.index)
             plan = session.scalar(stmt.limit(1))
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
