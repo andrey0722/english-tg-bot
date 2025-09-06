@@ -1,6 +1,7 @@
 """This module implements main logic of the bot."""
 
 import dataclasses
+import random
 from typing import List, Optional
 
 from default_cards import DEFAULT_CARDS
@@ -12,6 +13,8 @@ from model import Model
 from model import Session
 from model.types import EnglishWord
 from model.types import LearningCard
+from model.types import LearningOption
+from model.types import LearningPlan
 from model.types import ModelError
 from model.types import NewCardProgress
 from model.types import RussianWord
@@ -222,29 +225,124 @@ class Controller:
             OutputMessage: Bot response to the user.
         """
         user = message.user
+        self._model.delete_learning_plan(session, user)
+
+        card_number = self._model.get_card_number(session, user)
+        if card_number <= LearningPlan.OPTIONS_COUNT:
+            # User doesn't have enough cards
+            response = self._start_main_menu(session, message)
+            response.add_paragraph_before(Messages.NO_LEARNING_CARDS)
+            return response
+
         self._update_user_state(session, user, UserState.LEARNING)
-        response = OutputMessage(
+
+        # Prepare learning cards in random order
+        for card in self._model.get_random_cards(session, user):
+            self._add_plan_for_card(session, user, card)
+        self._model.commit(session)
+
+        # Show the first card
+        return self._show_learning_card(session, message)
+
+    def _add_plan_for_card(
+        self,
+        session: Session,
+        user: User,
+        card: LearningCard,
+    ):
+        """Internal helper that creates and stores new plan record for
+        a particular learning card with all the options for user to select.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+            card (LearningCard): Learning card object.
+        """
+        # Randomize answer location
+        position = random.randrange(LearningPlan.OPTIONS_COUNT + 1)
+        options = self._get_options_for_card(session, user, card)
+        plan = LearningPlan(
             user=user,
-            text=Messages.SELECT_LEARNING,
-            keyboard=self._get_learning_keyboard(),
+            card=card,
+            options=options,
+            answer_position=position,
         )
+        self._model.add_learning_plan(session, plan)
 
-        lines = []
-        for card in self._model.get_cards(session, user):
-            lines.append(f'{card.ru_word.text} -> {card.en_word.text}')
-        text = '\n'.join(lines)
-        response.add_paragraph_before(text)
-        response.add_paragraph_before('Cards:')
+    def _get_options_for_card(
+        self,
+        session: Session,
+        user: User,
+        card: LearningCard,
+    ) -> List[LearningOption]:
+        """Internal helper that collects a list of random options for user
+        to respond to when studying a learning.
 
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+            card (LearningCard): Learning card object.
+
+        Returns:
+            List[LearningOption]: Options for the learning card.
+        """
+        # Put correct answer first to exclude the same words
+        options: dict[str, LearningCard] = {card.en_word.text: card}
+        # Look for the rest unique options
+        while len(options) <= LearningPlan.OPTIONS_COUNT:
+            option = self._model.get_random_card(session, user)
+            if option and option.en_word.text not in options:
+                options[option.en_word.text] = option
+        # Delete the original answer, keep only wrong ones
+        del options[card.en_word.text]
+        return list(map(LearningOption, options.values()))
+
+    def _show_learning_card(
+        self,
+        session: Session,
+        message: InputMessage,
+        plan: Optional[LearningPlan] = None,
+    ) -> OutputMessage:
+        """Internal helper that shows next learning card to a user.
+
+        Args:
+            session (Session): Session object.
+            message (InputMessage): A message from user.
+            plan (Optional[LearningPlan]): Learning plan object to use. If
+                set to `None` then extract next plan record from the model
+                and use it. Defaults to `None`.
+
+        Returns:
+            OutputMessage: Bot response to the user.
+        """
+        user = message.user
+        if plan is None:
+            plan = self._model.get_next_learning_plan(session, user)
+        if plan is not None:
+            text = Messages.SELECT_TRANSLATION.format(plan.card.ru_word.text)
+            keyboard = self._get_learning_keyboard(plan)
+            response = OutputMessage(user=user, text=text, keyboard=keyboard)
+        else:
+            # No more cards in learning plan, learning is done
+            response = self._finish_learning(session, message)
         return response
 
-    @staticmethod
-    def _get_learning_keyboard() -> BotKeyboard:
-        """Internal helper to construct bot keyboard for learning menu."""
-        return BotKeyboard(
-            row_size=1,
-            buttons=list(LearningMenu.__members__.values()),
-        )
+    def _get_learning_keyboard(self, plan: LearningPlan) -> BotKeyboard:
+        """Internal helper to construct bot keyboard for learning card.
+
+        Args:
+            plan (LearningPlan): Learning plan object.
+
+        Returns:
+            BotKeyboard: Bot keyboard object.
+        """
+        # Prepare possible answers
+        cards = [option.card for option in plan.options]
+        cards.insert(plan.answer_position, plan.card)
+        # Prepare other buttons too
+        buttons = [card.en_word.text for card in cards]
+        buttons.extend(LearningMenu.__members__.values())
+        return BotKeyboard(row_size=2, buttons=buttons)
 
     def _respond_learning(
         self,
@@ -261,19 +359,67 @@ class Controller:
         Returns:
             Optional[OutputMessage]: Bot response to the user if any.
         """
+        user = message.user
         text = message.text
-        self._logger.info(
-            'User %s selected in learning menu: %s',
-            message.user,
-            text,
-        )
-        match text:
-            case LearningMenu.FINISH:
-                response = self._start_main_menu(session, message)
-                response.add_paragraph_before(Messages.FINISHED_LEARNING)
-                return response
-            case _:
-                self._logger.info('Unknown learning menu option: %s', text)
+        self._logger.info('User %s learning input: %s', user, text)
+
+        plan = self._model.get_next_learning_plan(session, user)
+        if plan is None or text == LearningMenu.FINISH:
+            return self._finish_learning(session, message)
+
+        card = plan.card
+        question = card.ru_word.text
+        answer = card.en_word.text
+        new_plan = None
+
+        if text == answer:
+            # The card is done, delete it from learning plan
+            self._delete_plan(session, plan)
+            text = Messages.CORRECT_TRANSLATION.format(question, answer)
+        elif text == LearningMenu.SKIP:
+            # Skip the card
+            self._delete_plan(session, plan)
+            text = Messages.SKIPPED_TRANSLATION
+        elif text == LearningMenu.DELETE:
+            self._model.delete_user_card(session, user, card)
+            self._model.commit(session)
+            text = Messages.DELETED_RU_EN_CARD.format(question, answer)
+        else:
+            # Just repeat the last card
+            new_plan = plan
+            text = Messages.WRONG_TRANSLATION
+        response = self._show_learning_card(session, message, new_plan)
+        response.add_paragraph_before(text)
+        return response
+
+    def _delete_plan(self, session: Session, plan: LearningPlan):
+        """Internal helper to delete learning plan record.
+
+        Args:
+            session (Session): Session object.
+            plan (LearningPlan): Learning plan object.
+        """
+        self._model.delete_learning_plan(session, plan.user, plan)
+        self._model.commit(session)
+
+    def _finish_learning(
+        self,
+        session: Session,
+        message: InputMessage,
+    ) -> OutputMessage:
+        """Internal helper that stops learning process and skips to main menu.
+
+        Args:
+            session (Session): Session object.
+            message (InputMessage): A message from user.
+
+        Returns:
+            OutputMessage: Bot response to the user.
+        """
+        self._model.delete_learning_plan(session, message.user)
+        response = self._start_main_menu(session, message)
+        response.add_paragraph_before(Messages.FINISHED_LEARNING)
+        return response
 
     def _start_new_card(
         self,
@@ -320,7 +466,7 @@ class Controller:
 
             # Add new card for user
             card = self._add_card(session, progress.ru_word, text)
-            user.cards.append(card)
+            user.cards.add(card)
             self._model.commit(session)
             text = Messages.ADDED_RU_EN_CARD.format(
                 card.ru_word.text,
@@ -374,7 +520,7 @@ class Controller:
         """
         for ru_word, en_word in DEFAULT_CARDS:
             card = self._add_card(session, ru_word, en_word)
-            user.cards.append(card)
+            user.cards.add(card)
             self._model.commit(session)
 
     def _add_card(

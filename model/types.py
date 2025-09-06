@@ -1,11 +1,12 @@
 """This module defines basic types that stores application data."""
 
 import enum
-from typing import List, Optional, TypeVar
+from typing import ClassVar, Final, List, Optional, TypeVar
 
 from sqlalchemy import orm
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import WriteOnlyMapped
 
 
 class ModelBaseType(orm.MappedAsDataclass, orm.DeclarativeBase):
@@ -52,8 +53,15 @@ class User(ModelBaseType):
         default=UserState.UNKNOWN_STATE,
     )
 
-    cards: Mapped[List['LearningCard']] = orm.relationship(
+    cards: WriteOnlyMapped['LearningCard'] = orm.relationship(
         secondary=user_card_association,
+        init=False,
+        repr=False,
+    )
+
+    learning_plan: WriteOnlyMapped['LearningPlan'] = orm.relationship(
+        back_populates='user',
+        cascade='all, delete-orphan',
         init=False,
         repr=False,
     )
@@ -113,18 +121,79 @@ class LearningCard(ModelBaseType):
     ru_word_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('word.id'),
         init=False,
+        repr=False,
     )
     en_word_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('word.id'),
         init=False,
+        repr=False,
     )
 
     ru_word: Mapped['RussianWord'] = orm.relationship(
         foreign_keys=[ru_word_id],
+        lazy='joined',
     )
     en_word: Mapped['EnglishWord'] = orm.relationship(
         foreign_keys=[en_word_id],
+        lazy='joined',
     )
+
+
+class LearningPlan(ModelBaseType):
+    """Holds a learning card pending to be completed by user in current
+    learning session. Once the card is completed the plan record must
+    be deleted. On learning session finish all plan records (if any)
+    must be deleted.
+    """
+
+    __tablename__ = 'learning_plan'
+
+    id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    user_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('user.id'),
+        init=False,
+    )
+    card_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('card.id'),
+        init=False,
+    )
+    answer_position: Mapped[int] = orm.mapped_column()
+
+    user: Mapped['User'] = orm.relationship(back_populates='learning_plan')
+    card: Mapped['LearningCard'] = orm.relationship(lazy='joined')
+    options: Mapped[List['LearningOption']] = orm.relationship(
+        back_populates='plan',
+        cascade='all, delete-orphan',
+        lazy='joined',
+    )
+
+    OPTIONS_COUNT: ClassVar[Final[int]] = 3
+    """Number of additional options besides the actual card."""
+
+
+class LearningOption(ModelBaseType):
+    """Holds options to show to a user when learning a particular
+    learning card.
+    """
+
+    __tablename__ = 'learning_option'
+
+    plan_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('learning_plan.id'),
+        primary_key=True,
+        init=False,
+    )
+    card_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('card.id'),
+        primary_key=True,
+        init=False,
+    )
+
+    plan: Mapped['LearningPlan'] = orm.relationship(
+        back_populates='options',
+        init=False,
+    )
+    card: Mapped['LearningCard'] = orm.relationship()
 
 
 class NewCardProgress(ModelBaseType):

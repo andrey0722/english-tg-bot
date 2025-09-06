@@ -15,6 +15,7 @@ import utils
 from .types import BaseWord
 from .types import BaseWordT
 from .types import LearningCard
+from .types import LearningPlan
 from .types import ModelBaseType
 from .types import ModelError
 from .types import NewCardProgress
@@ -286,12 +287,113 @@ class DatabaseModel:
             self._logger.debug('Add error: card=%r, error=%s', card, e)
             raise me from e
 
+    def delete_user_card(
+        self,
+        session: Session,
+        user: User,
+        card: LearningCard,
+    ) -> bool:
+        """Delete a particular learning card for a user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+            card (LearningCard): Card object.
+
+        Returns:
+            bool: `True` when the card was actually deleted from user,
+                `False` when user didn't have that card.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Deleting card %r from %r', card, user)
+        try:
+            # If deleted the card return its id
+            stmt = (
+                user.cards.delete()
+                .where(LearningCard.id == card.id)
+                .returning(LearningCard.id)
+            )
+            card_id = session.scalar(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Add error: card=%r, error=%s', card, e)
+            raise me from e
+
+        result = card_id is not None
+        self._logger.debug(
+            'Deleted card %r from %r, result: %s',
+            card,
+            user,
+            result,
+        )
+        return result
+
+    def get_card_number(self, session: Session, user: User) -> int:
+        """Extracts a number of all learning cards for a user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            int: Number of learning cards for the user.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Extracting card number for %r', user)
+        try:
+            stmt = (
+                sa.select(func.count())
+                .join(User.cards)
+                .where(User.id == user.id)
+            )
+            count = session.scalar(stmt) or 0
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Get card number: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Card number %d for %r', count, user)
+        return count
+
+    def get_random_card(
+        self,
+        session: Session,
+        user: User,
+    ) -> Optional[LearningCard]:
+        """Extracts a random learning card for a user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Optional[LearningCard]: Learning card for the user if any.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Extracting random card for %r', user)
+        try:
+            stmt = user.cards.select().order_by(func.random()).limit(1)
+            card = session.scalar(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Get random card: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Extracted random card %r for %r', card, user)
+        return card
+
     def get_cards(
         self,
         session: Session,
         user: User,
     ) -> Iterable[LearningCard]:
-        """Extracts a list of all learning cards for a user.
+        """Extracts a sequence of all learning cards for a user.
 
         Args:
             session (Session): Session object.
@@ -299,28 +401,17 @@ class DatabaseModel:
 
         Returns:
             Iterable[LearningCard]: Learning cards for the user.
+
+        Raises:
+            ModelError: Model operational error.
         """
         self._logger.debug('Extracting cards for %r', user)
         try:
             # Get card number first
-            stmt = (
-                sa.select(func.count())
-                .join(User.cards)
-                .where(User.id == user.id)
-            )
-            count = session.scalar(stmt) or 0
+            count = self.get_card_number(session, user)
 
             # Now extract user cards in batches
-            stmt = (
-                sa.select(LearningCard)
-                .join(User.cards)
-                .where(User.id == user.id)
-                .options(
-                    orm.joinedload(LearningCard.ru_word),
-                    orm.joinedload(LearningCard.en_word),
-                )
-                .execution_options(yield_per=20)
-            )
+            stmt = user.cards.select().execution_options(yield_per=20)
             cards = session.scalars(stmt)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
@@ -329,6 +420,123 @@ class DatabaseModel:
 
         self._logger.debug('Extracted %d cards for %r', count, user)
         return cards
+
+    def get_random_cards(
+        self,
+        session: Session,
+        user: User,
+    ) -> Iterable[LearningCard]:
+        """Extracts a sequence of all learning cards for user in random order.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Iterable[LearningCard]: Learning cards for the user.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Extracting random cards for %r', user)
+        try:
+            stmt = user.cards.select().order_by(func.random())
+            cards = session.scalars(stmt)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Get random cards: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Extracted random cards for %r', user)
+        return cards
+
+    def add_learning_plan(
+        self,
+        session: Session,
+        plan: LearningPlan,
+    ) -> LearningPlan:
+        """Add a new learning plan record for user.
+
+        Args:
+            session (Session): Session object.
+            plan (LearningPlan): Learning plan object.
+
+        Returns:
+            NewCardProgress: Plan object now associated with `session`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Saving: %r', plan)
+        try:
+            session.add(plan)
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Add plan error: plan=%r, error=%s', plan, e)
+            raise me from e
+
+        self._logger.debug('Saved: %r', plan)
+        return plan
+
+    def delete_learning_plan(
+        self,
+        session: Session,
+        user: User,
+        plan: Optional[LearningPlan] = None,
+    ):
+        """Delete all learning plan records for user.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+            plan (Optional[LearningPlan]): A specific plan record to delete.
+                If `None` delete all the plan records. Defaults to `None`.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Deleting plan %r for: %r', plan, user)
+        try:
+            if plan is not None:
+                user.learning_plan.remove(plan)
+            else:
+                session.execute(user.learning_plan.delete())
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Delete plan error: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Deleted plan %r for: %r', plan, user)
+
+    def get_next_learning_plan(
+        self,
+        session: Session,
+        user: User,
+    ) -> Optional[LearningPlan]:
+        """For given user return theirs next available learning plan record.
+
+        Args:
+            session (Session): Session object.
+            user (User): User object.
+
+        Returns:
+            Optional[NewCardProgress]: Learning plan record if any.
+
+        Raises:
+            ModelError: Model operational error.
+        """
+        self._logger.debug('Extracting plan for %r', user)
+        try:
+            # Extract plan records in exact order
+            stmt = user.learning_plan.select().order_by(LearningPlan.id)
+            plan = session.scalar(stmt.limit(1))
+        except exc.SQLAlchemyError as e:
+            me = self._create_model_error(e)
+            self._logger.debug('Get plan error: user=%r, error=%s', user, e)
+            raise me from e
+
+        self._logger.debug('Extracted: %r', plan)
+        return plan
 
     def add_new_card_progress(
         self,
@@ -343,6 +551,9 @@ class DatabaseModel:
 
         Returns:
             NewCardProgress: Progress object now associated with `session`.
+
+        Raises:
+            ModelError: Model operational error.
         """
         self._logger.debug('Saving: %r', progress)
         try:
@@ -372,6 +583,9 @@ class DatabaseModel:
 
         Returns:
             Optional[NewCardProgress]: New card progress if any.
+
+        Raises:
+            ModelError: Model operational error.
         """
         self._logger.debug('Extracting new card progress for %r', user)
         try:
