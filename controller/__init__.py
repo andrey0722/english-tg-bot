@@ -35,7 +35,7 @@ class Controller:
         self._state_mgr = StateManager(model, self._card_mgr)
         self._default_cards = TEST_CARDS if test_words else DEFAULT_CARDS
 
-    def start_user(self, message: InputMessage) -> Optional[OutputMessage]:
+    def start(self, message: InputMessage) -> Optional[OutputMessage]:
         """Starts the bot for user and shows main menu.
 
         Args:
@@ -56,7 +56,33 @@ class Controller:
             self._logger.error('Model error while greeting: %s', e)
             return OutputMessage(message.user, Messages.BOT_ERROR)
 
-    def clear_user(self, message: InputMessage) -> Optional[OutputMessage]:
+    def help(self, message: InputMessage) -> Optional[OutputMessage]:
+        """Prints bot help and shows main menu.
+
+        Args:
+            message (InputMessage): A message from user.
+
+        Returns:
+            Optional[OutputMessage]: Bot response to the user if any.
+        """
+        model = self._model
+        self._logger.info('Showing help %s', message.user)
+        try:
+            with model.create_session() as session:
+                user = message.user
+                if not model.user_exists(session, user.id):
+                    response = OutputMessage(user, Messages.USER_NOT_STARTED)
+                else:
+                    self._preprocess_user(session, message)
+                    state_mgr = self._state_mgr
+                    response = state_mgr.start_main_menu(session, message)
+                response.add_paragraph_before(Messages.BOT_HELP)
+                return response
+        except ModelError as e:
+            self._logger.error('Model error while greeting: %s', e)
+            return OutputMessage(message.user, Messages.BOT_ERROR)
+
+    def clear(self, message: InputMessage) -> Optional[OutputMessage]:
         """Erases user data from the bot.
 
         Args:
@@ -174,7 +200,7 @@ class Controller:
             user (User): A bot user.
         """
         if user.state == UserState.NEW_USER:
-            template = Messages.GREETING_NEW_USER
+            template = f'{Messages.GREETING_NEW_USER}\n\n{Messages.BOT_HELP}'
         else:
             template = Messages.GREETING_OLD_USER
         return template.format(user.display_name)

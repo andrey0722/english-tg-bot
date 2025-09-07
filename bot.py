@@ -48,6 +48,10 @@ class Bot:
             commands=['start'],
         )
         self._bot.register_message_handler(
+            self.handle_help,
+            commands=['help'],
+        )
+        self._bot.register_message_handler(
             self.handle_clear,
             commands=['clear'],
         )
@@ -77,7 +81,17 @@ class Bot:
             message (TelebotMessage): A message from user.
         """
         if in_message := self._convert_message(message):
-            if response := self._controller.start_user(in_message):
+            if response := self._controller.start(in_message):
+                self._send_message(message, response)
+
+    def handle_help(self, message: TelebotMessage):
+        """Process /help command from user.
+
+        Args:
+            message (TelebotMessage): A message from user.
+        """
+        if in_message := self._convert_message(message):
+            if response := self._controller.help(in_message):
                 self._send_message(message, response)
 
     def handle_clear(self, message: TelebotMessage):
@@ -87,7 +101,7 @@ class Bot:
             message (TelebotMessage): A message from user.
         """
         if in_message := self._convert_message(message):
-            if response := self._controller.clear_user(in_message):
+            if response := self._controller.clear(in_message):
                 self._send_message(message, response)
 
     def handle_message(self, message: TelebotMessage):
