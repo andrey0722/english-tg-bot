@@ -11,10 +11,10 @@ from telebot.types import ReplyKeyboardMarkup
 from telebot.types import ReplyKeyboardRemove
 from telebot.types import ReplyParameters
 
-from controller import BotKeyboard
 from controller import Controller
 from controller import InputMessage
 from controller import OutputMessage
+from controller.types import BotKeyboard
 import log
 from model.types import User
 import utils
