@@ -96,12 +96,14 @@ class User(ModelBaseType):
 class BaseWord(ModelBaseType):
     """Represents a word of any language."""
 
+    MAX_LENGTH: ClassVar[Final[int]] = 64
+
     __tablename__ = 'word'
     __mapper_args__ = {'polymorphic_on': 'language'}
     __table_args__ = (sa.UniqueConstraint('text', 'language'),)
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
-    text: Mapped[str] = orm.mapped_column(sa.String(64))
+    text: Mapped[str] = orm.mapped_column(sa.String(MAX_LENGTH))
     language: Mapped[str] = orm.mapped_column(init=False)
 
 

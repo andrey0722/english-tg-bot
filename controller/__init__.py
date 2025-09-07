@@ -138,7 +138,16 @@ class Controller:
         model = self._model
         card_mgr = self._card_mgr
         for ru_word, en_word in self._default_cards:
-            card = card_mgr.add_card(session, ru_word, en_word)
+            try:
+                card = card_mgr.add_card(session, ru_word, en_word)
+            except ValueError:
+                # Skipping bad words from default list
+                self._logger.warning(
+                    'Bad word pair from the default list: %s -> %s',
+                    ru_word,
+                    en_word,
+                )
+                continue
             user.cards.add(card)
             model.commit(session)
 

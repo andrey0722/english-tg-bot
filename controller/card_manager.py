@@ -1,7 +1,9 @@
 """This module provides methods for various operations with learning cards."""
 
+import log
 from model import Model
 from model import Session
+from model.types import BaseWord
 from model.types import EnglishWord
 from model.types import LearningCard
 from model.types import RussianWord
@@ -17,6 +19,7 @@ class CardManager:
             model (Model): Model object.
         """
         self._model = model
+        self._logger = log.create_logger(self)
 
     def add_card(
         self,
@@ -67,15 +70,21 @@ class CardManager:
         text = self.preprocess_user_word(text)
         return self._model.add_word(session, EnglishWord(text=text))
 
-    @staticmethod
-    def preprocess_user_word(text: str) -> str:
+    def preprocess_user_word(self, text: str) -> str:
         """Processes text from user input to match it later against
         words in learning cards.
 
         Args:
             text (str): User input text.
 
+        Raises:
+            ValueError: Input string is too long.
+
         Returns:
             str: Preprocessed text.
         """
-        return text.strip().lower()
+        text = text.strip()
+        if len(text) > BaseWord.MAX_LENGTH:
+            self._logger.warning('Word is too long: %s', text)
+            raise ValueError(f'Too long word: {text}')
+        return text.lower()

@@ -103,7 +103,7 @@ class ControllerState(abc.ABC):
         session: Session,
         message: InputMessage,
     ) -> Optional[OutputMessage]:
-        """_summary_
+        """Reply to user input according to current bot state.
 
         Args:
             session (Session): Session object.

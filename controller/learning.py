@@ -72,7 +72,6 @@ class LearningState(ControllerState):
         user = message.user
         text = message.text
         model = self.model
-        card_mgr = self.card_manager
         self._logger.info('User %s learning input: %s', user, text)
 
         plan = model.get_next_learning_plan(session, user)
@@ -84,7 +83,7 @@ class LearningState(ControllerState):
         answer = card.en_word.text
         new_plan = None
 
-        if card_mgr.preprocess_user_word(text) == answer:
+        if self._preprocess_word(text) == answer:
             # The card is done, delete it from learning plan
             self._logger.info('"%s" is the correct answer', text)
             model.delete_learning_plan(session, user, plan)
@@ -109,6 +108,21 @@ class LearningState(ControllerState):
         response = self._show_learning_card(session, message, new_plan)
         response.add_paragraph_before(text)
         return response
+
+    def _preprocess_word(self, text: str) -> str:
+        """Internal helper to process user input for word matching.
+
+        Args:
+            text (str): User input text.
+
+        Returns:
+            str: Preprocessed text.
+        """
+        try:
+            return self.card_manager.preprocess_user_word(text)
+        except ValueError:
+            # Just return the word, because we use it simply for matching
+            return text
 
     def _show_learning_card(
         self,
