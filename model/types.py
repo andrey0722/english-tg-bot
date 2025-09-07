@@ -37,6 +37,7 @@ user_card_association = sa.Table(
         primary_key=True,
     ),
 )
+"""Junction table for User-Card many-to-many relationship."""
 
 
 class User(ModelBaseType):
@@ -45,13 +46,22 @@ class User(ModelBaseType):
     __tablename__ = 'user'
 
     id: Mapped[int] = orm.mapped_column(primary_key=True)
+    """User unique Telegram ID value."""
+
     username: Mapped[Optional[str]] = orm.mapped_column(sa.String(32))
+    """Username as specified in Telegram profile."""
+
     first_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    """User first name as specified in Telegram profile."""
+
     last_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    """User last name as specified in Telegram profile."""
+
     state: Mapped = orm.mapped_column(
         sa.Enum(UserState, name='userstate', metadata=ModelBaseType.metadata),
         default=UserState.UNKNOWN_STATE,
     )
+    """Current user state."""
 
     cards: WriteOnlyMapped['LearningCard'] = orm.relationship(
         secondary=user_card_association,
@@ -59,14 +69,16 @@ class User(ModelBaseType):
         init=False,
         repr=False,
     )
+    """All learning card added to this user."""
 
-    learning_plan: WriteOnlyMapped['LearningPlan'] = orm.relationship(
+    questions: WriteOnlyMapped['LearningQuestion'] = orm.relationship(
         back_populates='user',
         cascade='all, delete-orphan',
         passive_deletes=True,
         init=False,
         repr=False,
     )
+    """All questions for this user during learning session in progress."""
 
     learning_progress: Mapped[Optional['LearningProgress']] = orm.relationship(
         back_populates='user',
@@ -74,6 +86,7 @@ class User(ModelBaseType):
         init=False,
         repr=False,
     )
+    """Current user statistics during current learning session."""
 
     new_card_progress: Mapped[Optional['NewCardProgress']] = orm.relationship(
         back_populates='user',
@@ -81,6 +94,7 @@ class User(ModelBaseType):
         init=False,
         repr=False,
     )
+    """Word data while user is adding a new learning card."""
 
     @property
     def display_name(self) -> str:
@@ -93,6 +107,12 @@ class User(ModelBaseType):
         return self.display_name
 
 
+class Language(enum.StrEnum):
+    """All allowed languages for words."""
+    EN = enum.auto()
+    RU = enum.auto()
+
+
 class BaseWord(ModelBaseType):
     """Represents a word of any language."""
 
@@ -103,8 +123,18 @@ class BaseWord(ModelBaseType):
     __table_args__ = (sa.UniqueConstraint('text', 'language'),)
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    """Surrogate key field of word entity."""
+
     text: Mapped[str] = orm.mapped_column(sa.String(MAX_LENGTH))
-    language: Mapped[str] = orm.mapped_column(init=False)
+    """Word text in lower case."""
+
+    language: Mapped[str] = orm.mapped_column(
+        sa.Enum(Language, name='language', metadata=ModelBaseType.metadata),
+        init=False,
+    )
+    """Language discriminator for polymorphic ORM mapping. Should not
+    be assigned directly in any way.
+    """
 
 
 BaseWordT = TypeVar('BaseWordT', bound=BaseWord)
@@ -113,13 +143,13 @@ BaseWordT = TypeVar('BaseWordT', bound=BaseWord)
 class EnglishWord(BaseWord):
     """Represents an english word for a learning card."""
 
-    __mapper_args__ = {'polymorphic_identity': 'en'}
+    __mapper_args__ = {'polymorphic_identity': Language.EN}
 
 
 class RussianWord(BaseWord):
     """Represents a russian word for a learning card."""
 
-    __mapper_args__ = {'polymorphic_identity': 'ru'}
+    __mapper_args__ = {'polymorphic_identity': Language.RU}
 
 
 class LearningCard(ModelBaseType):
@@ -129,107 +159,130 @@ class LearningCard(ModelBaseType):
     __table_args__ = (sa.UniqueConstraint('ru_word_id', 'en_word_id'),)
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    """Surrogate key field of card entity."""
+
     ru_word_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
         repr=False,
     )
+    ru_word: Mapped['RussianWord'] = orm.relationship(
+        foreign_keys=[ru_word_id],
+        lazy='joined',
+    )
+    """The word to question user about."""
+
     en_word_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
         repr=False,
     )
-
-    ru_word: Mapped['RussianWord'] = orm.relationship(
-        foreign_keys=[ru_word_id],
-        lazy='joined',
-    )
     en_word: Mapped['EnglishWord'] = orm.relationship(
         foreign_keys=[en_word_id],
         lazy='joined',
     )
+    """Translation that user has to guess."""
 
-    plans: Mapped[List['LearningPlan']] = orm.relationship(
+    questions: Mapped[List['LearningQuestion']] = orm.relationship(
+        back_populates='answer_card',
+        cascade='all, delete-orphan',
+        init=False,
+        repr=False,
+    )
+    """All questions pending with this word."""
+
+    distractors: Mapped[List['LearningDistractor']] = orm.relationship(
         back_populates='card',
         cascade='all, delete-orphan',
         init=False,
         repr=False,
     )
-    options: Mapped[List['LearningOption']] = orm.relationship(
-        back_populates='card',
-        cascade='all, delete-orphan',
-        init=False,
-        repr=False,
-    )
+    """All distractors with questions pending with this word."""
 
 
-class LearningPlan(ModelBaseType):
+class LearningQuestion(ModelBaseType):
     """Holds a learning card pending to be completed by user in current
-    learning session. Once the card is completed the plan record must
-    be deleted. On learning session finish all plan records (if any)
+    learning session. Once the card is completed the question record must
+    be deleted. On learning session finish all question records (if any)
     must be deleted.
     """
 
-    __tablename__ = 'learning_plan'
-    __table_args__ = (sa.UniqueConstraint('user_id', 'index'),)
+    CHOICE_COUNT: ClassVar[Final[int]] = 4
+    """Number of choices given to a user."""
+
+    __tablename__ = 'learning_question'
+    __table_args__ = (sa.UniqueConstraint('user_id', 'order'),)
 
     id: Mapped[int] = orm.mapped_column(primary_key=True, init=False)
+    """Surrogate key field of question entity."""
+
     user_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('user.id', ondelete='CASCADE'),
         init=False,
     )
-    index: Mapped[int] = orm.mapped_column()
-    card_id: Mapped[int] = orm.mapped_column(
+    user: Mapped['User'] = orm.relationship(back_populates='questions')
+    """Target user for the question."""
+
+    order: Mapped[int] = orm.mapped_column()
+    """Field to enforce strict sorting order."""
+
+    answer_card_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('card.id', ondelete='CASCADE'),
         init=False,
     )
-    answer_position: Mapped[int] = orm.mapped_column()
-
-    user: Mapped['User'] = orm.relationship(back_populates='learning_plan')
-    card: Mapped['LearningCard'] = orm.relationship(
-        back_populates='plans',
+    answer_card: Mapped['LearningCard'] = orm.relationship(
+        back_populates='questions',
         lazy='joined',
     )
-    options: Mapped[List['LearningOption']] = orm.relationship(
-        back_populates='plan',
+    """Learning card that holds the question and answer words."""
+
+    answer_position: Mapped[int] = orm.mapped_column()
+    """Answer's position among the distractors."""
+
+    distractors: Mapped[List['LearningDistractor']] = orm.relationship(
+        back_populates='question',
         cascade='all, delete-orphan',
         lazy='joined',
+        order_by=lambda: LearningDistractor.order
     )
-
-    OPTIONS_COUNT: ClassVar[Final[int]] = 3
-    """Number of additional options besides the actual card."""
+    """All distractors for this question."""
 
 
-class LearningOption(ModelBaseType):
-    """Holds options to show to a user when learning a particular
-    learning card.
+class LearningDistractor(ModelBaseType):
+    """Holds invalid answer to show along with the correct answer
+    to a user when learning a particular learning card.
     """
 
-    __tablename__ = 'learning_option'
+    __tablename__ = 'learning_distractor'
 
-    plan_id: Mapped[int] = orm.mapped_column(
-        sa.ForeignKey('learning_plan.id', ondelete='CASCADE'),
+    question_id: Mapped[int] = orm.mapped_column(
+        sa.ForeignKey('learning_question.id', ondelete='CASCADE'),
         primary_key=True,
         init=False,
     )
+    question: Mapped['LearningQuestion'] = orm.relationship(
+        back_populates='distractors',
+        init=False,
+    )
+    """Learning question which the distractor belongs to."""
+
+    order: Mapped[int] = orm.mapped_column()
+    """Field to enforce strict sorting order."""
+
     card_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('card.id', ondelete='CASCADE'),
         primary_key=True,
         init=False,
     )
-
-    plan: Mapped['LearningPlan'] = orm.relationship(
-        back_populates='options',
-        init=False,
-    )
     card: Mapped['LearningCard'] = orm.relationship(
-        back_populates='options',
+        back_populates='distractors',
         lazy='joined',
     )
+    """Learning card where to take the word for the distractor."""
 
 
 class LearningProgress(ModelBaseType):
-    """Holds user progress during a learning session."""
+    """Holds user statistics during a learning session."""
 
     __tablename__ = 'learning_progress'
 
@@ -238,11 +291,17 @@ class LearningProgress(ModelBaseType):
         primary_key=True,
         init=False,
     )
-    succeeded_count: Mapped[int] = orm.mapped_column(default=0, init=False)
-    failed_count: Mapped[int] = orm.mapped_column(default=0, init=False)
-    skipped_count: Mapped[int] = orm.mapped_column(default=0, init=False)
-
     user: Mapped['User'] = orm.relationship(back_populates='learning_progress')
+    """User that has these statistics."""
+
+    succeeded_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+    """How much times did user answer correctly during learning session."""
+
+    failed_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+    """How much times did user answer wrongly during learning session."""
+
+    skipped_count: Mapped[int] = orm.mapped_column(default=0, init=False)
+    """How much times did user skip words during learning session."""
 
 
 class NewCardProgress(ModelBaseType):
@@ -255,13 +314,15 @@ class NewCardProgress(ModelBaseType):
         primary_key=True,
         init=False,
     )
+    user: Mapped['User'] = orm.relationship(back_populates='new_card_progress')
+    """User that adds a new word."""
+
     ru_word_id: Mapped[int] = orm.mapped_column(
         sa.ForeignKey('word.id', ondelete='CASCADE'),
         init=False,
     )
-
-    user: Mapped['User'] = orm.relationship(back_populates='new_card_progress')
     ru_word: Mapped['RussianWord'] = orm.relationship(lazy='joined')
+    """The word from user input."""
 
 
 class ModelError(Exception):

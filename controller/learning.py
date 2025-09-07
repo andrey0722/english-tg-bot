@@ -1,4 +1,6 @@
-"""This module shows main menu to user and handles user selection in it."""
+"""This module performs a learning session for user and validates
+user input against learning cards.
+"""
 
 import random
 from typing import Final, List, Optional, override
@@ -8,9 +10,9 @@ from messages import MainMenu
 from messages import Messages
 from model import Session
 from model.types import LearningCard
-from model.types import LearningOption
-from model.types import LearningPlan
+from model.types import LearningDistractor
 from model.types import LearningProgress
+from model.types import LearningQuestion
 from model.types import User
 from model.types import UserState
 
@@ -22,7 +24,8 @@ from .types import OutputMessage
 
 class LearningState(ControllerState):
     """Performs a learning session for user and validates user input
-    against learning cards."""
+    against learning cards.
+    """
 
     MENU_TO_STATE: Final = {
         MainMenu.LEARN: UserState.LEARNING,
@@ -39,10 +42,10 @@ class LearningState(ControllerState):
         user = message.user
         model = self.model
 
-        model.delete_learning_plan(session, user)
+        model.delete_learning_question(session, user)
         self._reset_learning_progress(session, user)
 
-        req_count = LearningPlan.OPTIONS_COUNT + 1
+        req_count = LearningQuestion.CHOICE_COUNT
         card_number = model.get_card_number(session, user)
         if card_number < req_count:
             # User doesn't have enough cards
@@ -53,8 +56,8 @@ class LearningState(ControllerState):
 
         # Prepare learning cards in random order
         cards = model.get_random_cards(session, user)
-        for index, card in enumerate(cards):
-            self._add_plan_for_card(session, user, index, card)
+        for order, card in enumerate(cards):
+            self._add_question_for_card(session, user, order, card)
         model.commit(session)
 
         # Show the first card
@@ -74,38 +77,38 @@ class LearningState(ControllerState):
         model = self.model
         self._logger.info('User %s learning input: %s', user, text)
 
-        plan = model.get_next_learning_plan(session, user)
-        if plan is None or text == LearningMenu.FINISH:
+        question = model.get_next_learning_question(session, user)
+        if question is None or text == LearningMenu.FINISH:
             return self._finish_learning(session, message)
 
-        card = plan.card
-        question = card.ru_word.text
+        card = question.answer_card
+        asked = card.ru_word.text
         answer = card.en_word.text
-        new_plan = None
+        cached_question = None
 
         if self._preprocess_word(text) == answer:
             # The card is done, delete it from learning plan
             self._logger.info('"%s" is the correct answer', text)
-            model.delete_learning_plan(session, user, plan)
+            model.delete_learning_question(session, user, question)
             self._increment_succeeded(session, user)
-            text = Messages.CORRECT_TRANSLATION.format(question, answer)
+            text = Messages.CORRECT_TRANSLATION.format(asked, answer)
         elif text == LearningMenu.SKIP:
             # Skip the card
-            model.delete_learning_plan(session, user, plan)
+            model.delete_learning_question(session, user, question)
             self._increment_skipped(session, user)
             text = Messages.SKIPPED_TRANSLATION
         elif text == LearningMenu.DELETE:
-            model.delete_learning_plan(session, user, plan)
+            model.delete_learning_question(session, user, question)
             model.delete_user_card(user, card)
-            text = Messages.DELETED_RU_EN_CARD.format(question, answer)
+            text = Messages.DELETED_RU_EN_CARD.format(asked, answer)
         else:
             # Just repeat the last card
             self._logger.info('"%s" is wrong', text)
-            new_plan = plan
+            cached_question = question
             self._increment_failed(session, user)
             text = Messages.WRONG_TRANSLATION
         model.commit(session)
-        response = self._show_learning_card(session, message, new_plan)
+        response = self._show_learning_card(session, message, cached_question)
         response.add_paragraph_before(text)
         return response
 
@@ -128,28 +131,28 @@ class LearningState(ControllerState):
         self,
         session: Session,
         message: InputMessage,
-        plan: Optional[LearningPlan] = None,
+        question: Optional[LearningQuestion] = None,
     ) -> OutputMessage:
         """Internal helper that shows next learning card to a user.
 
         Args:
             session (Session): Session object.
             message (InputMessage): A message from user.
-            plan (Optional[LearningPlan]): Learning plan object to use. If
-                set to `None` then extract next plan record from the model
-                and use it. Defaults to `None`.
+            question (Optional[LearningQuestion]): Learning question
+                object to use. If set to `None` then extract next question
+                record from the model and use it. Defaults to `None`.
 
         Returns:
             OutputMessage: Bot response to the user.
         """
         user = message.user
-        if plan is None:
-            plan = self.model.get_next_learning_plan(session, user)
-        if plan is not None:
-            text = plan.card.ru_word.text
+        if question is None:
+            question = self.model.get_next_learning_question(session, user)
+        if question is not None:
+            text = question.answer_card.ru_word.text
             self._logger.info('Showing "%s" to %s', text, user)
             text = Messages.SELECT_TRANSLATION.format(text)
-            keyboard = self._get_keyboard(plan)
+            keyboard = self._get_keyboard(question)
             response = OutputMessage(user=user, text=text, keyboard=keyboard)
         else:
             # No more cards in learning plan, learning is done
@@ -172,7 +175,7 @@ class LearningState(ControllerState):
         """
         user = message.user
         self._logger.info('User %s finished learning', user)
-        self.model.delete_learning_plan(session, user)
+        self.model.delete_learning_question(session, user)
         response = self._manager.start_main_menu(session, message)
         progress = self._get_learning_progress(session, user)
         text = Messages.FINISHED_LEARNING.format(
@@ -183,18 +186,18 @@ class LearningState(ControllerState):
         response.add_paragraph_before(text)
         return response
 
-    def _get_keyboard(self, plan: LearningPlan) -> BotKeyboard:
+    def _get_keyboard(self, question: LearningQuestion) -> BotKeyboard:
         """Internal helper to construct bot keyboard for learning card.
 
         Args:
-            plan (LearningPlan): Learning plan object.
+            question (LearningQuestion): Learning question object.
 
         Returns:
             BotKeyboard: Bot keyboard object.
         """
         # Prepare possible answers
-        cards = [option.card for option in plan.options]
-        cards.insert(plan.answer_position, plan.card)
+        cards = [distractor.card for distractor in question.distractors]
+        cards.insert(question.answer_position, question.answer_card)
         # Prepare other buttons too
         buttons = [card.en_word.text for card in cards]
         buttons.extend(LearningMenu.__members__.values())
@@ -259,42 +262,42 @@ class LearningState(ControllerState):
             progress = LearningProgress(user=user)
         return progress
 
-    def _add_plan_for_card(
+    def _add_question_for_card(
         self,
         session: Session,
         user: User,
-        index: int,
+        order: int,
         card: LearningCard,
     ):
-        """Internal helper that creates and stores new plan record for
-        a particular learning card with all the options for user to select.
+        """Internal helper that creates and stores new question record for
+        a particular learning card with all the choices for user to select.
 
         Args:
             session (Session): Session object.
             user (User): User object.
-            index (int): Positional index of this card in learning session.
+            order (int): Positional index of this card in learning session.
             card (LearningCard): Learning card object.
         """
         # Randomize answer location
-        answer_position = random.randrange(LearningPlan.OPTIONS_COUNT + 1)
-        options = self._get_options_for_card(session, user, card)
-        plan = LearningPlan(
-            index=index,
+        answer_position = random.randrange(LearningQuestion.CHOICE_COUNT)
+        distractors = self._get_distractors_for_card(session, user, card)
+        question = LearningQuestion(
+            order=order,
             user=user,
-            card=card,
-            options=options,
+            answer_card=card,
+            distractors=distractors,
             answer_position=answer_position,
         )
-        self.model.add_learning_plan(session, plan)
+        self.model.add_learning_question(session, question)
 
-    def _get_options_for_card(
+    def _get_distractors_for_card(
         self,
         session: Session,
         user: User,
         card: LearningCard,
-    ) -> List[LearningOption]:
-        """Internal helper that collects a list of random options for user
-        to respond to when studying a learning.
+    ) -> List[LearningDistractor]:
+        """Internal helper that collects a list of random distractors
+        for user to select from when studying a learning.
 
         Args:
             session (Session): Session object.
@@ -302,15 +305,15 @@ class LearningState(ControllerState):
             card (LearningCard): Learning card object.
 
         Returns:
-            List[LearningOption]: Options for the learning card.
+            List[LearningDistractor]: Distractors for the learning card.
         """
         # Put correct answer first to exclude the same words
-        options: dict[str, LearningCard] = {card.en_word.text: card}
-        # Look for the rest unique options
-        while len(options) <= LearningPlan.OPTIONS_COUNT:
-            option = self.model.get_random_card(session, user)
-            if option and option.en_word.text not in options:
-                options[option.en_word.text] = option
+        choices: dict[str, LearningCard] = {card.en_word.text: card}
+        # Look for the rest unique choices
+        while len(choices) < LearningQuestion.CHOICE_COUNT:
+            choice = self.model.get_random_card(session, user)
+            if choice and choice.en_word.text not in choices:
+                choices[choice.en_word.text] = choice
         # Delete the original answer, keep only wrong ones
-        del options[card.en_word.text]
-        return list(map(LearningOption, options.values()))
+        del choices[card.en_word.text]
+        return [LearningDistractor(*x) for x in enumerate(choices.values())]

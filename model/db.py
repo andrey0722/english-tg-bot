@@ -15,8 +15,8 @@ import utils
 from .types import BaseWord
 from .types import BaseWordT
 from .types import LearningCard
-from .types import LearningPlan
 from .types import LearningProgress
+from .types import LearningQuestion
 from .types import ModelBaseType
 from .types import ModelError
 from .types import NewCardProgress
@@ -432,93 +432,102 @@ class DatabaseModel:
         self._logger.debug('Extracted random cards for %r', user)
         return cards
 
-    def add_learning_plan(
+    def add_learning_question(
         self,
         session: Session,
-        plan: LearningPlan,
-    ) -> LearningPlan:
-        """Add a new learning plan record for user.
+        question: LearningQuestion,
+    ) -> LearningQuestion:
+        """Add a new learning question record for user.
 
         Args:
             session (Session): Session object.
-            plan (LearningPlan): Learning plan object.
+            question (LearningQuestion): Learning question object.
 
         Returns:
-            NewCardProgress: Plan object now associated with `session`.
+            LearningQuestion: Question object now associated with `session`.
 
         Raises:
             ModelError: Model operational error.
         """
-        self._logger.debug('Saving: %r', plan)
+        self._logger.debug('Saving: %r', question)
         try:
-            session.add(plan)
+            session.add(question)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.debug('Add plan error: plan=%r, error=%s', plan, e)
+            self._logger.debug('Add error: question=%r, error=%s', question, e)
             raise me from e
 
-        self._logger.debug('Saved: %r', plan)
-        return plan
+        self._logger.debug('Saved: %r', question)
+        return question
 
-    def delete_learning_plan(
+    def delete_learning_question(
         self,
         session: Session,
         user: User,
-        plan: Optional[LearningPlan] = None,
+        question: Optional[LearningQuestion] = None,
     ):
-        """Delete all learning plan records for user.
+        """Remove all learning question records for user.
 
         Args:
             session (Session): Session object.
             user (User): User object.
-            plan (Optional[LearningPlan]): A specific plan record to delete.
-                If `None` delete all the plan records. Defaults to `None`.
+            question (Optional[LearningQuestion]): A specific question
+                record to delete. If `None` delete all the question records.
+                Defaults to `None`.
 
         Raises:
             ModelError: Model operational error.
         """
-        self._logger.debug('Deleting plan %r for: %r', plan, user)
+        self._logger.debug('Deleting question %r for: %r', question, user)
         try:
-            if plan is not None:
-                user.learning_plan.remove(plan)
+            if question is not None:
+                user.questions.remove(question)
             else:
-                session.execute(user.learning_plan.delete())
+                session.execute(user.questions.delete())
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.debug('Delete plan error: user=%r, error=%s', user, e)
+            self._logger.debug(
+                'Delete question error: user=%r, error=%s',
+                user,
+                e,
+            )
             raise me from e
 
-        self._logger.debug('Deleted plan %r for: %r', plan, user)
+        self._logger.debug('Deleted question %r for: %r', question, user)
 
-    def get_next_learning_plan(
+    def get_next_learning_question(
         self,
         session: Session,
         user: User,
-    ) -> Optional[LearningPlan]:
-        """For given user return theirs next available learning plan record.
+    ) -> Optional[LearningQuestion]:
+        """For given user return theirs next available learning question.
 
         Args:
             session (Session): Session object.
             user (User): User object.
 
         Returns:
-            Optional[NewCardProgress]: Learning plan record if any.
+            Optional[LearningQuestion]: Learning question record if any.
 
         Raises:
             ModelError: Model operational error.
         """
-        self._logger.debug('Extracting plan for %r', user)
+        self._logger.debug('Extracting question for %r', user)
         try:
-            # Extract plan records in exact order
-            stmt = user.learning_plan.select().order_by(LearningPlan.index)
-            plan = session.scalar(stmt.limit(1))
+            # Extract question records in exact order
+            stmt = user.questions.select().order_by(LearningQuestion.order)
+            question = session.scalar(stmt.limit(1))
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
-            self._logger.debug('Get plan error: user=%r, error=%s', user, e)
+            self._logger.debug(
+                'Get question error: user=%r, error=%s',
+                user,
+                e,
+            )
             raise me from e
 
-        self._logger.debug('Extracted: %r', plan)
-        return plan
+        self._logger.debug('Extracted: %r', question)
+        return question
 
     def get_learning_progress(
         self,
