@@ -24,6 +24,9 @@ class AddCardState(ControllerState):
 
     @override
     def start(self, session: Session, message: InputMessage) -> OutputMessage:
+        model = self.model
+        model.delete_new_card_progress(session, message.user)
+        model.commit(session)
         return OutputMessage(user=message.user, text=Messages.ENTER_RU_WORD)
 
     @override
