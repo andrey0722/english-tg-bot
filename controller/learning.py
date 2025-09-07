@@ -86,6 +86,7 @@ class LearningState(ControllerState):
 
         if card_mgr.preprocess_user_word(text) == answer:
             # The card is done, delete it from learning plan
+            self._logger.info('"%s" is the correct answer', text)
             model.delete_learning_plan(session, user, plan)
             self._increment_succeeded(session, user)
             text = Messages.CORRECT_TRANSLATION.format(question, answer)
@@ -100,6 +101,7 @@ class LearningState(ControllerState):
             text = Messages.DELETED_RU_EN_CARD.format(question, answer)
         else:
             # Just repeat the last card
+            self._logger.info('"%s" is wrong', text)
             new_plan = plan
             self._increment_failed(session, user)
             text = Messages.WRONG_TRANSLATION
@@ -130,7 +132,9 @@ class LearningState(ControllerState):
         if plan is None:
             plan = self.model.get_next_learning_plan(session, user)
         if plan is not None:
-            text = Messages.SELECT_TRANSLATION.format(plan.card.ru_word.text)
+            text = plan.card.ru_word.text
+            self._logger.info('Showing "%s" to %s', text, user)
+            text = Messages.SELECT_TRANSLATION.format(text)
             keyboard = self._get_keyboard(plan)
             response = OutputMessage(user=user, text=text, keyboard=keyboard)
         else:
@@ -153,6 +157,7 @@ class LearningState(ControllerState):
             OutputMessage: Bot response to the user.
         """
         user = message.user
+        self._logger.info('User %s finished learning', user)
         self.model.delete_learning_plan(session, user)
         response = self._manager.start_main_menu(session, message)
         progress = self._get_learning_progress(session, user)

@@ -41,6 +41,12 @@ class AddCardState(ControllerState):
             card = card_mgr.add_card(session, progress.ru_word, text)
             user.cards.add(card)
             model.commit(session)
+            self._logger.info(
+                'Added card "%s" -> "%s" for %s',
+                card.ru_word.text,
+                card.en_word.text,
+                user,
+            )
             text = Messages.ADDED_RU_EN_CARD.format(
                 card.ru_word.text,
                 card.en_word.text,

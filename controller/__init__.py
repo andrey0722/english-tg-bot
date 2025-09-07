@@ -122,6 +122,7 @@ class Controller:
             message.user = model.update_user(session, user)
         else:
             # User is now known
+            self._logger.info('New user: %s', user)
             user.state = UserState.NEW_USER
             model.add_user(session, user)
             self._add_default_cards(session, user)
