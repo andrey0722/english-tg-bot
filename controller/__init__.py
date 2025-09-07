@@ -3,6 +3,7 @@
 from typing import Optional
 
 from default_cards import DEFAULT_CARDS
+from default_cards import TEST_CARDS
 import log
 from messages import Messages
 from model import Model
@@ -20,16 +21,19 @@ from .types import OutputMessage
 class Controller:
     """A class which instance processes input from the bot and handles it."""
 
-    def __init__(self, model: Model) -> None:
+    def __init__(self, model: Model, test_words: bool = False) -> None:
         """Initialize controller object.
 
         Args:
             model (Model): Model object.
+            test_words (bool): If `True` use only a small subset of
+                default words for new users.
         """
         self._model = model
         self._logger = log.create_logger(self)
         self._card_mgr = CardManager(self._model)
         self._state_mgr = StateManager(model, self._card_mgr)
+        self._default_cards = TEST_CARDS if test_words else DEFAULT_CARDS
 
     def start_user(self, message: InputMessage) -> Optional[OutputMessage]:
         """Starts the bot for user and shows main menu.
@@ -132,7 +136,7 @@ class Controller:
         """
         model = self._model
         card_mgr = self._card_mgr
-        for ru_word, en_word in DEFAULT_CARDS:
+        for ru_word, en_word in self._default_cards:
             card = card_mgr.add_card(session, ru_word, en_word)
             user.cards.add(card)
             model.commit(session)

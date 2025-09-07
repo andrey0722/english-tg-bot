@@ -2,6 +2,20 @@
 
 from typing import List, Tuple
 
+TEST_CARDS: List[Tuple[str, str]] = [
+    ('красный', 'red'),
+    ('хороший', 'good'),
+    ('быстрый', 'fast'),
+    ('машина', 'car'),
+    ('дверь', 'door'),
+    ('кто', 'who'),
+    ('работать', 'work'),
+    ('хотеть', 'want'),
+    ('иметь', 'have'),
+    ('много', 'many'),
+    ('после', 'after'),
+]
+
 DEFAULT_CARDS: List[Tuple[str, str]] = [
     #
     # Adjectives

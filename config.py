@@ -33,6 +33,7 @@ class Config(ConfigBase):
     """
     log_level: log.LogLevel = log.LogLevel.INFO
     tg_bot_token: str = '1234567890:TG_BOT_EXAMPLE_TOKEN'
+    test_words: bool = False
 
     @field_validator('log_level', mode='before')
     @classmethod

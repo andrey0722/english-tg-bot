@@ -30,7 +30,7 @@ class Application:
         log.setup_logging(self._config.log_level)
         self._logger = log.create_logger(self)
         self._model = self._create_model()
-        self._controller = Controller(self._model)
+        self._controller = Controller(self._model, self._config.test_words)
         self._bot = Bot(self._controller, self._config.tg_bot_token)
 
     def run(self):
