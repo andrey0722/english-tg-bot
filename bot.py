@@ -1,7 +1,8 @@
 """This module defines interaction with the Telegram bot API."""
 
+import enum
 import json
-from typing import Optional
+from typing import Final, Optional
 
 import telebot
 import telebot.apihelper
@@ -20,6 +21,20 @@ from model.types import User
 import utils
 
 BotError = telebot.apihelper.ApiException
+
+
+class BotCommand(enum.StrEnum):
+    """Contains all command supported by the bot."""
+    START = enum.auto()
+    HELP = enum.auto()
+    CLEAR = enum.auto()
+
+
+COMMAND_TO_HANDLER: Final = {
+    BotCommand.START: Controller.start,
+    BotCommand.HELP: Controller.help,
+    BotCommand.CLEAR: Controller.clear,
+}
 
 
 class Bot:
@@ -43,21 +58,16 @@ class Bot:
         self._set_telebot_logger()
         self._bot = self._create_bot(token)
 
-        self._bot.register_message_handler(
-            self.handle_start,
-            commands=['start'],
-        )
-        self._bot.register_message_handler(
-            self.handle_help,
-            commands=['help'],
-        )
-        self._bot.register_message_handler(
-            self.handle_clear,
-            commands=['clear'],
-        )
+        command_to_method = {
+            BotCommand.START: self.handle_start,
+            BotCommand.HELP: self.handle_help,
+            BotCommand.CLEAR: self.handle_clear,
+        }
+        for command, method in command_to_method.items():
+            self._bot.register_message_handler(method, commands=[command])
+
         self._bot.register_message_handler(
             self.handle_message,
-            func=lambda _: True,
             content_types=['text'],
         )
 
@@ -80,9 +90,7 @@ class Bot:
         Args:
             message (TelebotMessage): A message from user.
         """
-        if in_message := self._convert_message(message):
-            if response := self._controller.start(in_message):
-                self._send_message(message, response)
+        self._handle_command(message, BotCommand.START)
 
     def handle_help(self, message: TelebotMessage):
         """Process /help command from user.
@@ -90,9 +98,7 @@ class Bot:
         Args:
             message (TelebotMessage): A message from user.
         """
-        if in_message := self._convert_message(message):
-            if response := self._controller.help(in_message):
-                self._send_message(message, response)
+        self._handle_command(message, BotCommand.HELP)
 
     def handle_clear(self, message: TelebotMessage):
         """Process /clear command from user.
@@ -100,9 +106,7 @@ class Bot:
         Args:
             message (TelebotMessage): A message from user.
         """
-        if in_message := self._convert_message(message):
-            if response := self._controller.clear(in_message):
-                self._send_message(message, response)
+        self._handle_command(message, BotCommand.CLEAR)
 
     def handle_message(self, message: TelebotMessage):
         """Process any other message from user.
@@ -113,6 +117,18 @@ class Bot:
         if in_message := self._convert_message(message):
             if response := self._controller.respond_user(in_message):
                 self._send_message(message, response, reply=True)
+
+    def _handle_command(self, message: TelebotMessage, command: BotCommand):
+        """Internal helper to process a command from user.
+
+        Args:
+            message (TelebotMessage): A message from user.
+            command (BotCommand): Bot command value.
+        """
+        handler = COMMAND_TO_HANDLER[command]
+        if in_message := self._convert_message(message):
+            if response := handler(self._controller, in_message):
+                self._send_message(message, response)
 
     def _convert_message(
         self,
@@ -213,12 +229,15 @@ class Bot:
 
         Args:
             keyboard (BotKeyboard): Bot keyboard.
+
+        Returns:
+            ReplyKeyboardMarkup: Telebot keyboard.
         """
         reply_markup = ReplyKeyboardMarkup(
             row_width=keyboard.row_size,
             resize_keyboard=True,
         )
-        buttons = [KeyboardButton(x) for x in keyboard.buttons]
+        buttons = list(map(KeyboardButton, keyboard.buttons))
         reply_markup.add(*buttons)
         return reply_markup
 
