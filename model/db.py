@@ -422,7 +422,11 @@ class DatabaseModel:
         """
         self._logger.debug('Extracting random cards for %r', user)
         try:
-            stmt = user.cards.select().order_by(func.random())
+            stmt = (
+                user.cards.select()
+                .order_by(func.random())
+                .execution_options(yield_per=20)
+            )
             cards = session.scalars(stmt)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
