@@ -3,10 +3,9 @@ user input against learning cards.
 """
 
 import random
-from typing import Final, List, Optional, override
+from typing import List, Optional, override
 
 from messages import LearningMenu
-from messages import MainMenu
 from messages import Messages
 from model import Session
 from model.types import LearningCard
@@ -14,7 +13,6 @@ from model.types import LearningDistractor
 from model.types import LearningProgress
 from model.types import LearningQuestion
 from model.types import User
-from model.types import UserState
 
 from .types import BotKeyboard
 from .types import ControllerState
@@ -26,16 +24,6 @@ class LearningState(ControllerState):
     """Performs a learning session for user and validates user input
     against learning cards.
     """
-
-    MENU_TO_STATE: Final = {
-        MainMenu.LEARN: UserState.LEARNING,
-        MainMenu.ADD_CARD: UserState.ADDING_CARD,
-    }
-
-    KEYBOARD: Final = BotKeyboard(
-        row_size=1,
-        buttons=list(MainMenu.__members__.values()),
-    )
 
     @override
     def start(self, session: Session, message: InputMessage) -> OutputMessage:
