@@ -1,7 +1,5 @@
 """This package implements main logic of the bot."""
 
-from typing import Optional
-
 from default_cards import DEFAULT_CARDS
 from default_cards import TEST_CARDS
 import log
@@ -13,6 +11,7 @@ from model.types import User
 from model.types import UserState
 
 from .card_manager import CardManager
+from .card_manager import WordTooLongError
 from .state_manager import StateManager
 from .types import InputMessage
 from .types import OutputMessage
@@ -21,7 +20,7 @@ from .types import OutputMessage
 class Controller:
     """A class which instance processes input from the bot and handles it."""
 
-    def __init__(self, model: Model, test_words: bool = False) -> None:
+    def __init__(self, model: Model, *, test_words: bool = False) -> None:
         """Initialize controller object.
 
         Args:
@@ -35,7 +34,7 @@ class Controller:
         self._state_mgr = StateManager(model, self._card_mgr)
         self._default_cards = TEST_CARDS if test_words else DEFAULT_CARDS
 
-    def start(self, message: InputMessage) -> Optional[OutputMessage]:
+    def start(self, message: InputMessage) -> OutputMessage | None:
         """Starts the bot for user and shows main menu.
 
         Args:
@@ -56,7 +55,7 @@ class Controller:
             self._logger.error('Model error while greeting: %s', e)
             return OutputMessage(message.user, Messages.BOT_ERROR)
 
-    def help(self, message: InputMessage) -> Optional[OutputMessage]:
+    def help(self, message: InputMessage) -> OutputMessage | None:
         """Prints bot help and shows main menu.
 
         Args:
@@ -82,7 +81,7 @@ class Controller:
             self._logger.error('Model error while greeting: %s', e)
             return OutputMessage(message.user, Messages.BOT_ERROR)
 
-    def clear(self, message: InputMessage) -> Optional[OutputMessage]:
+    def clear(self, message: InputMessage) -> OutputMessage | None:
         """Erases user data from the bot.
 
         Args:
@@ -107,7 +106,7 @@ class Controller:
     def respond_user(
         self,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         """Processes a message from user and forms a response.
 
         Args:
@@ -129,8 +128,13 @@ class Controller:
             self._logger.error('Model error while responding: %s', e)
             return OutputMessage(message.user, Messages.BOT_ERROR)
 
-    def _preprocess_user(self, session: Session, message: InputMessage):
+    def _preprocess_user(
+        self,
+        session: Session,
+        message: InputMessage,
+    ) -> None:
         """Internal helper to process input user object using the model.
+
         Must be called when starting to process new message from a user.
         User object in message is modified in-place.
 
@@ -154,7 +158,7 @@ class Controller:
             self._add_default_cards(session, user)
         model.commit(session)
 
-    def _add_default_cards(self, session: Session, user: User):
+    def _add_default_cards(self, session: Session, user: User) -> None:
         """Internal helper to add default cards to a user.
 
         Args:
@@ -166,7 +170,7 @@ class Controller:
         for ru_word, en_word in self._default_cards:
             try:
                 card = card_mgr.add_card(session, ru_word, en_word)
-            except ValueError:
+            except WordTooLongError:
                 # Skipping bad words from default list
                 self._logger.warning(
                     'Bad word pair from the default list: %s -> %s',

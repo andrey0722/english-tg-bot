@@ -9,10 +9,22 @@ from model.types import LearningCard
 from model.types import RussianWord
 
 
+class WordTooLongError(ValueError):
+    """Input word exceeds maximum supported length."""
+
+    def __init__(self, text: str) -> None:
+        """Initialize an exception object.
+
+        Args:
+            text (str): User input text.
+        """
+        super().__init__(f'Too long word: {text}')
+
+
 class CardManager:
     """Provides methods for various operations with learning cards."""
 
-    def __init__(self, model: Model):
+    def __init__(self, model: Model) -> None:
         """Initialize a card manager object.
 
         Args:
@@ -36,6 +48,9 @@ class CardManager:
 
         Returns:
             RussianWord: Word object from the model.
+
+        Raises:
+            WordTooLongError: At least one of the input words is too long.
         """
         if not isinstance(ru_word, RussianWord):
             ru_word = self.add_ru_word(session, ru_word)
@@ -53,6 +68,9 @@ class CardManager:
 
         Returns:
             RussianWord: Word object from the model.
+
+        Raises:
+            WordTooLongError: Input string is too long.
         """
         text = self.preprocess_user_word(text)
         return self._model.add_word(session, RussianWord(text=text))
@@ -66,19 +84,21 @@ class CardManager:
 
         Returns:
             EnglishWord: Word object from the model.
+
+        Raises:
+            WordTooLongError: Input string is too long.
         """
         text = self.preprocess_user_word(text)
         return self._model.add_word(session, EnglishWord(text=text))
 
     def preprocess_user_word(self, text: str) -> str:
-        """Processes text from user input to match it later against
-        words in learning cards.
+        """Processes user text input as a word from a learning card.
 
         Args:
             text (str): User input text.
 
         Raises:
-            ValueError: Input string is too long.
+            WordTooLongError: Input string is too long.
 
         Returns:
             str: Preprocessed text.
@@ -86,5 +106,5 @@ class CardManager:
         text = text.strip()
         if len(text) > BaseWord.MAX_LENGTH:
             self._logger.warning('Word is too long: %s', text)
-            raise ValueError(f'Too long word: {text}')
+            raise WordTooLongError(text)
         return text.lower()

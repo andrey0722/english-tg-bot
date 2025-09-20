@@ -1,4 +1,6 @@
-"""This module defines the main class of the entire application and
+"""Defines initialization logic for application.
+
+This module defines the main class of the entire application and
 all connections between program components.
 """
 
@@ -30,7 +32,10 @@ class Application:
         log.setup_logging(self._config.log_level)
         self._logger = log.create_logger(self)
         self._model = self._create_model()
-        self._controller = Controller(self._model, self._config.test_words)
+        self._controller = Controller(
+            self._model,
+            test_words=self._config.test_words,
+        )
         self._bot = Bot(self._controller, self._config.tg_bot_token)
 
     def run(self):

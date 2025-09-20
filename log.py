@@ -1,9 +1,8 @@
 """This module defines infrastructure for application logging."""
 
-
 import enum
 import logging
-from typing import Any, Optional, override
+from typing import override
 
 import coloredlogs
 
@@ -20,11 +19,12 @@ class LogLevel(enum.IntEnum):
 
 
 class LogLevelLimitFilter(logging.Filter):
-    """Reduces log level of all log records to a specified level. Helps
-    to avoid flooding with logs on high log level.
+    """Reduces log level of all log records to a specified level.
+
+    Helps to avoid flooding with logs on high log level.
     """
 
-    def __init__(self, logger: logging.Logger, level: LogLevel):
+    def __init__(self, logger: logging.Logger, level: LogLevel) -> None:
         """Initialize filer object.
 
         Args:
@@ -46,7 +46,7 @@ class LogLevelLimitFilter(logging.Filter):
         return True
 
 
-def setup_logging(level: LogLevel = LogLevel.INFO):
+def setup_logging(level: LogLevel = LogLevel.INFO) -> None:
     """Initialize logging infrastructure for future logging.
 
     Args:
@@ -58,8 +58,8 @@ def setup_logging(level: LogLevel = LogLevel.INFO):
 
 
 def create_logger(
-    obj: Any,
-    level: Optional[LogLevel] = None,
+    obj: object,
+    level: LogLevel | None = None,
 ) -> logging.Logger:
     """Initialize logging infrastructure for future logging.
 
@@ -77,11 +77,11 @@ def create_logger(
     return logger
 
 
-def _get_logger_name(obj: Any) -> str:
+def _get_logger_name(obj: object) -> str:
     """Internal helper to calculate desired logger name.
 
     Args:
-        obj (Any): Object to use for name calculation.
+        obj (object): Object to use for name calculation.
     """
     if isinstance(obj, str):
         # User specified a concrete logger name

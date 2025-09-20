@@ -1,10 +1,12 @@
-"""This module performs a learning session for user and validates
-user input against learning cards.
+"""This module performs a learning session for user.
+
+Also validates user input against learning cards.
 """
 
 import random
-from typing import List, Optional, override
+from typing import override
 
+from controller.card_manager import WordTooLongError
 from messages import LearningMenu
 from messages import Messages
 from model import Session
@@ -21,9 +23,7 @@ from .types import OutputMessage
 
 
 class LearningState(ControllerState):
-    """Performs a learning session for user and validates user input
-    against learning cards.
-    """
+    """In this state user answers questions during learning session."""
 
     @override
     def start(self, session: Session, message: InputMessage) -> OutputMessage:
@@ -59,7 +59,7 @@ class LearningState(ControllerState):
         self,
         session: Session,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         user = message.user
         text = message.text
         model = self.model
@@ -111,7 +111,7 @@ class LearningState(ControllerState):
         """
         try:
             return self.card_manager.preprocess_user_word(text)
-        except ValueError:
+        except WordTooLongError:
             # Just return the word, because we use it simply for matching
             return text
 
@@ -119,7 +119,7 @@ class LearningState(ControllerState):
         self,
         session: Session,
         message: InputMessage,
-        question: Optional[LearningQuestion] = None,
+        question: LearningQuestion | None = None,
     ) -> OutputMessage:
         """Internal helper that shows next learning card to a user.
 
@@ -191,7 +191,7 @@ class LearningState(ControllerState):
         buttons.extend(LearningMenu.__members__.values())
         return BotKeyboard(row_size=2, buttons=buttons)
 
-    def _reset_learning_progress(self, session: Session, user: User):
+    def _reset_learning_progress(self, session: Session, user: User) -> None:
         """Internal helper that resets learning progress for user to zero.
 
         Args:
@@ -201,7 +201,7 @@ class LearningState(ControllerState):
         progress = LearningProgress(user=user)
         self.model.update_learning_progress(session, progress)
 
-    def _increment_succeeded(self, session: Session, user: User):
+    def _increment_succeeded(self, session: Session, user: User) -> None:
         """Internal helper that increments the success count for user.
 
         Args:
@@ -212,7 +212,7 @@ class LearningState(ControllerState):
         progress.succeeded_count += 1
         self.model.update_learning_progress(session, progress)
 
-    def _increment_failed(self, session: Session, user: User):
+    def _increment_failed(self, session: Session, user: User) -> None:
         """Internal helper that increments the fail count for user.
 
         Args:
@@ -223,7 +223,7 @@ class LearningState(ControllerState):
         progress.failed_count += 1
         self.model.update_learning_progress(session, progress)
 
-    def _increment_skipped(self, session: Session, user: User):
+    def _increment_skipped(self, session: Session, user: User) -> None:
         """Internal helper that increments the fail count for user.
 
         Args:
@@ -256,9 +256,11 @@ class LearningState(ControllerState):
         user: User,
         order: int,
         card: LearningCard,
-    ):
-        """Internal helper that creates and stores new question record for
-        a particular learning card with all the choices for user to select.
+    ) -> None:
+        """Internal helper that creates and stores new question record.
+
+        Creates a new question record for a particular with the given card.
+        Distractors are also prepared in advance.
 
         Args:
             session (Session): Session object.
@@ -283,9 +285,11 @@ class LearningState(ControllerState):
         session: Session,
         user: User,
         card: LearningCard,
-    ) -> List[LearningDistractor]:
-        """Internal helper that collects a list of random distractors
-        for user to select from when studying a learning.
+    ) -> list[LearningDistractor]:
+        """Internal helper that collects list of random distractors.
+
+        Collects a list of random distractors for user to select from
+        when studying a learning.
 
         Args:
             session (Session): Session object.

@@ -1,9 +1,8 @@
-"""This module allows user to add a new learning card for them and
-handles user input.
-"""
+"""This module defines the state when user adds a new learning card."""
 
-from typing import ClassVar, Optional, override
+from typing import ClassVar, override
 
+from controller.card_manager import WordTooLongError
 from messages import Messages
 from model import Session
 from model.types import BaseWord
@@ -15,11 +14,10 @@ from .types import OutputMessage
 
 
 class AddCardState(ControllerState):
-    """Allows user to add a new learning card for them and handles
-    user input."""
+    """In this state user adds a new learning card."""
 
     WORD_TOO_LONG: ClassVar = Messages.WORD_TOO_LONG.format(
-        BaseWord.MAX_LENGTH
+        BaseWord.MAX_LENGTH,
     )
 
     @override
@@ -34,16 +32,15 @@ class AddCardState(ControllerState):
         self,
         session: Session,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         user = message.user
         self._logger.info('User %s word input: %s', user, message.text)
 
         if progress := self.model.get_new_card_progress(session, user):
             self._logger.debug('Current new card progress: %r', progress)
             return self._process_second_word(session, message, progress)
-        else:
-            # Save user progress
-            return self._process_first_word(session, message)
+        # Save user progress
+        return self._process_first_word(session, message)
 
     def _process_first_word(
         self,
@@ -65,7 +62,7 @@ class AddCardState(ControllerState):
 
         try:
             ru_word = self.card_manager.add_ru_word(session, text)
-        except ValueError:
+        except WordTooLongError:
             response = self.start(session, message)
             response.add_paragraph_before(self.WORD_TOO_LONG)
             return response
@@ -101,7 +98,7 @@ class AddCardState(ControllerState):
         # Add new card for user
         try:
             card = self.card_manager.add_card(session, progress.ru_word, text)
-        except ValueError:
+        except WordTooLongError:
             response = OutputMessage(user, Messages.ENTER_EN_WORD)
             response.add_paragraph_before(self.WORD_TOO_LONG)
             return response

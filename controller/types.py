@@ -2,7 +2,7 @@
 
 import abc
 import dataclasses
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import log
 from model import Model
@@ -28,7 +28,7 @@ class BotKeyboard:
     """Contents of bot keyboard shown to user."""
 
     row_size: int
-    buttons: List[str]
+    buttons: list[str]
 
 
 @dataclasses.dataclass
@@ -37,10 +37,15 @@ class OutputMessage:
 
     user: User
     text: str
-    keyboard: Optional[BotKeyboard] = None
+    keyboard: BotKeyboard | None = None
 
-    def add_paragraph_before(self, paragraph: str, *, separator: str = '\n\n'):
-        """Add a paragraph before current message text.
+    def add_paragraph_before(
+        self,
+        paragraph: str,
+        *,
+        separator: str = '\n\n',
+    ) -> None:
+        r"""Add a paragraph before current message text.
 
         Args:
             paragraph (str): Text paragraph to add.
@@ -49,8 +54,13 @@ class OutputMessage:
         """
         self.text = separator.join([paragraph, self.text])
 
-    def add_paragraph_after(self, paragraph: str, *, separator: str = '\n\n'):
-        """Add a paragraph after current message text.
+    def add_paragraph_after(
+        self,
+        paragraph: str,
+        *,
+        separator: str = '\n\n',
+    ) -> None:
+        r"""Add a paragraph after current message text.
 
         Args:
             paragraph (str): Text paragraph to add.
@@ -61,11 +71,13 @@ class OutputMessage:
 
 
 class ControllerState(abc.ABC):
-    """Base class of the bot state. Performs all actions that are required
-    when bot enters into the state and handles user replies.
+    """Base class of the bot state.
+
+    Performs all actions that are required when bot enters
+    into the state and handles user replies.
     """
 
-    def __init__(self, manager: 'StateManager'):
+    def __init__(self, manager: 'StateManager') -> None:
         """Initialize a controller state object.
 
         Args:
@@ -102,7 +114,7 @@ class ControllerState(abc.ABC):
         self,
         session: Session,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         """Reply to user input according to current bot state.
 
         Args:

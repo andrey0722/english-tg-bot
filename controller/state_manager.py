@@ -1,6 +1,5 @@
 """This module controls controller state transition for users."""
 
-from typing import Optional
 
 from model import Model
 from model import Session
@@ -20,6 +19,12 @@ class StateManager:
     """Controls controller state transition for users."""
 
     def __init__(self, model: Model, card_mgr: CardManager) -> None:
+        """Initialize state manager object.
+
+        Args:
+            model (Model): Model object.
+            card_mgr (CardManager): Card manager object.
+        """
         self._model = model
         self._card_mgr = card_mgr
         self._states: dict[UserState, ControllerState] = {
@@ -77,7 +82,7 @@ class StateManager:
         self,
         session: Session,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         """Respond to a user depending on user state.
 
         Args:
@@ -90,13 +95,14 @@ class StateManager:
         state = message.user.state
         if state in self._states:
             return self._states[state].respond(session, message)
+        return None
 
     def _update_user_state(
         self,
         session: Session,
         user: User,
         state: UserState,
-    ):
+    ) -> None:
         """Internal helper to modify user state and reflect it in the model.
 
         Args:

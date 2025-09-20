@@ -1,8 +1,9 @@
 """This module defines interaction with the Telegram bot API."""
 
+from collections.abc import Callable
 import enum
 import json
-from typing import Final, Optional
+from typing import Final
 
 import telebot
 import telebot.apihelper
@@ -30,15 +31,21 @@ class BotCommand(enum.StrEnum):
     CLEAR = enum.auto()
 
 
-COMMAND_TO_HANDLER: Final = {
+Handler = Callable[[Controller, InputMessage], OutputMessage | None]
+
+
+COMMAND_TO_HANDLER: Final[dict[BotCommand | None, Handler]] = {
     BotCommand.START: Controller.start,
     BotCommand.HELP: Controller.help,
     BotCommand.CLEAR: Controller.clear,
+    None: Controller.respond_user,
 }
 
 
 class Bot:
-    """A class which instance incapsulates interaction with
+    """Interacts with Telegram bot API.
+
+    A class which instance incapsulates interaction with
     Telegram bot API. Main logic is handled by a controller.
     """
 
@@ -46,7 +53,7 @@ class Bot:
         self,
         controller: Controller,
         token: str,
-    ):
+    ) -> None:
         """Initialize bot object.
 
         Args:
@@ -67,7 +74,7 @@ class Bot:
             self._bot.register_message_handler(method, commands=[command])
 
         self._bot.register_message_handler(
-            self.handle_message,
+            self.handle_text,
             content_types=['text'],
         )
 
@@ -84,56 +91,64 @@ class Bot:
             self._logger.debug('Bot polling error')
             raise
 
-    def handle_start(self, message: TelebotMessage):
+    def handle_start(self, message: TelebotMessage) -> None:
         """Process /start command from user.
 
         Args:
             message (TelebotMessage): A message from user.
         """
-        self._handle_command(message, BotCommand.START)
+        self._handle_message(message, BotCommand.START)
 
-    def handle_help(self, message: TelebotMessage):
+    def handle_help(self, message: TelebotMessage) -> None:
         """Process /help command from user.
 
         Args:
             message (TelebotMessage): A message from user.
         """
-        self._handle_command(message, BotCommand.HELP)
+        self._handle_message(message, BotCommand.HELP)
 
-    def handle_clear(self, message: TelebotMessage):
+    def handle_clear(self, message: TelebotMessage) -> None:
         """Process /clear command from user.
 
         Args:
             message (TelebotMessage): A message from user.
         """
-        self._handle_command(message, BotCommand.CLEAR)
+        self._handle_message(message, BotCommand.CLEAR)
 
-    def handle_message(self, message: TelebotMessage):
-        """Process any other message from user.
+    def handle_text(self, message: TelebotMessage) -> None:
+        """Process any text message from user.
 
         Args:
             message (TelebotMessage): A message from user.
         """
-        if in_message := self._convert_message(message):
-            if response := self._controller.respond_user(in_message):
-                self._send_message(message, response, reply=True)
+        self._handle_message(message)
 
-    def _handle_command(self, message: TelebotMessage, command: BotCommand):
+    def _handle_message(
+        self,
+        message: TelebotMessage,
+        command: BotCommand | None = None,
+    ) -> None:
         """Internal helper to process a command from user.
 
         Args:
             message (TelebotMessage): A message from user.
-            command (BotCommand): Bot command value.
+            command (BotCommand | None): Bot command value. Defaults to None.
         """
+        in_message = self._convert_message(message)
+        if not in_message:
+            return
+
         handler = COMMAND_TO_HANDLER[command]
-        if in_message := self._convert_message(message):
-            if response := handler(self._controller, in_message):
-                self._send_message(message, response)
+        response = handler(self._controller, in_message)
+        if not response:
+            return
+
+        self._send_message(message, response, reply=True)
 
     def _convert_message(
         self,
         message: TelebotMessage,
-    ) -> Optional[InputMessage]:
+    ) -> InputMessage | None:
         """Internal helper to process user message.
 
         Args:
@@ -149,8 +164,9 @@ class Bot:
                 user=user,
                 text=message.text or '',
             )
+        return None
 
-    def _extract_user(self, message: TelebotMessage) -> Optional[User]:
+    def _extract_user(self, message: TelebotMessage) -> User | None:
         """Internal helper to extract user data from a message.
 
         Args:
@@ -184,7 +200,7 @@ class Bot:
         response: OutputMessage,
         *,
         reply: bool = False,
-    ):
+    ) -> None:
         """Internal helper to send response back to the user.
 
         Args:
@@ -215,7 +231,7 @@ class Bot:
         )
 
     @staticmethod
-    def _get_reply_params(message: TelebotMessage):
+    def _get_reply_params(message: TelebotMessage) -> ReplyParameters:
         """Internal helper to calculate reply parameters for bot message.
 
         Args:

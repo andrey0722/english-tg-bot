@@ -1,11 +1,12 @@
 """Defines a database data model."""
 
+from collections.abc import Callable
+from collections.abc import Iterable
 import dataclasses
-from typing import Callable, Iterable, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import exc
 from sqlalchemy import orm
-import sqlalchemy as sa
 import sqlalchemy.log
 from sqlalchemy.sql import functions as func
 
@@ -47,7 +48,7 @@ class DatabaseModelError(ModelError):
 class DatabaseModel:
     """Stores data in database persistently."""
 
-    def __init__(self, db_params: DatabaseConfig):
+    def __init__(self, db_params: DatabaseConfig) -> None:
         """Initialize database model object.
 
         Args:
@@ -76,7 +77,7 @@ class DatabaseModel:
         """
         return self._create_session()
 
-    def commit(self, session: Session):
+    def commit(self, session: Session) -> None:
         """Saves pending changes into the model.
 
         Args:
@@ -108,7 +109,7 @@ class DatabaseModel:
         self._logger.debug('Checking if user %s exists', user_id)
         return self.get_user(session, user_id) is not None
 
-    def get_user(self, session: Session, user_id: int) -> Optional[User]:
+    def get_user(self, session: Session, user_id: int) -> User | None:
         """Extracts a user from the model using user Telegram id.
 
         Args:
@@ -136,9 +137,10 @@ class DatabaseModel:
             self._logger.debug('User %s does not exist', user_id)
         return user
 
-    def add_user(self, session: Session, user: User):
-        """Adds new user into the model. Input object could be
-        modified in-place to respect current model state.
+    def add_user(self, session: Session, user: User) -> None:
+        """Adds new user into the model.
+
+        Input object could be modified in-place to respect current model state.
 
         Args:
             session (Session): Session object.
@@ -174,7 +176,7 @@ class DatabaseModel:
         self._logger.debug('Updating user %r', user)
         try:
             if session.get(User, user.id) is None:
-                raise UserNotFoundError(f'User {user!r} does not exist')
+                raise UserNotFoundError(user)
             result = session.merge(user)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
@@ -184,7 +186,7 @@ class DatabaseModel:
         self._logger.debug('Updated user %r', result)
         return result
 
-    def delete_user(self, session: Session, user_id: int) -> Optional[User]:
+    def delete_user(self, session: Session, user_id: int) -> User | None:
         """Deletes user from the model.
 
         Args:
@@ -198,7 +200,6 @@ class DatabaseModel:
         Raises:
             ModelError: Model operational error.
         """
-
         self._logger.debug('Deleting user %r', user_id)
         try:
             stmt = sa.delete(User).where(User.id == user_id).returning(User)
@@ -215,8 +216,9 @@ class DatabaseModel:
         return user
 
     def add_word(self, session: Session, word: BaseWordT) -> BaseWordT:
-        """Adds new word into the model or extracts an existing one. Input
-        object could be modified in-place to respect current model state.
+        """Adds new word into the model or extracts an existing one.
+
+        Input object could be modified in-place to respect current model state.
 
         Args:
             session (Session): Session object.
@@ -240,19 +242,20 @@ class DatabaseModel:
                 # Update input object with data from DB
                 word.id = existing.id
                 return session.merge(word)
-            else:
-                # Word doesn't exist, create it
-                session.add(word)
-                self._logger.debug('Added word %r', word)
-                return word
+            # Word doesn't exist, create it
+            session.add(word)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Add error: word=%r, error=%s', word, e)
             raise me from e
+        else:
+            self._logger.debug('Added word %r', word)
+            return word
 
     def add_card(self, session: Session, card: LearningCard) -> LearningCard:
-        """Adds new card into the model or extracts an existing one. Input
-        object could be modified in-place to respect current model state.
+        """Adds new card into the model or extracts an existing one.
+
+        Input object could be modified in-place to respect current model state.
 
         Args:
             session (Session): Session object.
@@ -278,21 +281,21 @@ class DatabaseModel:
                 card.ru_word_id = existing.ru_word_id
                 card.en_word_id = existing.en_word_id
                 return session.merge(card)
-            else:
-                # Card doesn't exist, create it
-                session.add(card)
-                self._logger.debug('Added card %r', card)
-                return card
+            # Card doesn't exist, create it
+            session.add(card)
         except exc.SQLAlchemyError as e:
             me = self._create_model_error(e)
             self._logger.debug('Add error: card=%r, error=%s', card, e)
             raise me from e
+        else:
+            self._logger.debug('Added card %r', card)
+            return card
 
     def delete_user_card(
         self,
         user: User,
         card: LearningCard,
-    ):
+    ) -> None:
         """Delete a particular learning card for a user.
 
         Args:
@@ -345,7 +348,7 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-    ) -> Optional[LearningCard]:
+    ) -> LearningCard | None:
         """Extracts a random learning card for a user.
 
         Args:
@@ -468,8 +471,8 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-        question: Optional[LearningQuestion] = None,
-    ):
+        question: LearningQuestion | None = None,
+    ) -> None:
         """Remove all learning question records for user.
 
         Args:
@@ -503,7 +506,7 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-    ) -> Optional[LearningQuestion]:
+    ) -> LearningQuestion | None:
         """For given user return theirs next available learning question.
 
         Args:
@@ -537,7 +540,7 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-    ) -> Optional[LearningProgress]:
+    ) -> LearningProgress | None:
         """For given user return theirs learning progress.
 
         Args:
@@ -553,7 +556,7 @@ class DatabaseModel:
         self._logger.debug('Extracting learning progress for %r', user)
         try:
             stmt = sa.select(LearningProgress).where(
-                LearningProgress.user_id == user.id
+                LearningProgress.user_id == user.id,
             )
             progress = session.scalar(stmt)
         except exc.SQLAlchemyError as e:
@@ -573,8 +576,9 @@ class DatabaseModel:
         session: Session,
         progress: LearningProgress,
     ) -> LearningProgress:
-        """Updates learning progress in the model. If doesn't exist
-        already then add new progress instance into the model.
+        """Updates learning progress in the model.
+
+        If doesn't exist already then add new progress instance into the model.
 
         Args:
             session (Session): Session object.
@@ -634,7 +638,7 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-    ) -> Optional[NewCardProgress]:
+    ) -> NewCardProgress | None:
         """For given user return theirs add new card progress.
 
         Args:
@@ -650,7 +654,7 @@ class DatabaseModel:
         self._logger.debug('Extracting new card progress for %r', user)
         try:
             stmt = sa.select(NewCardProgress).where(
-                NewCardProgress.user_id == user.id
+                NewCardProgress.user_id == user.id,
             )
             progress = session.scalar(stmt)
         except exc.SQLAlchemyError as e:
@@ -669,7 +673,7 @@ class DatabaseModel:
         self,
         session: Session,
         user: User,
-    ) -> Optional[NewCardProgress]:
+    ) -> NewCardProgress | None:
         """For given user delete theirs add new card progress.
 
         Args:
@@ -748,7 +752,7 @@ class DatabaseModel:
         self._set_engine_logger(engine)
         return engine
 
-    def _set_engine_logger(self, engine: sa.Engine):
+    def _set_engine_logger(self, engine: sa.Engine) -> None:
         """Internal helper to monkey patch engine logger.
 
         Args:
@@ -764,8 +768,13 @@ class DatabaseModel:
         engine.logger = logger
 
     def _create_session_factory(self) -> SessionFactory:
-        """Internal helper to create and return DB session factory
+        """Internal helper that creates and returns DB session factory.
+
+        Creates DB session factory with required parameters
         which creates session objects to perform DB operations.
+
+        Returns:
+            SessionFactory: DB session factory.
         """
         return orm.sessionmaker(
             bind=self._engine,
@@ -804,5 +813,5 @@ class DatabaseModel:
     def _set_sqlalchemy_logger():
         """Override logger of the `sqlalchemy` library."""
         sqlalchemy.log.rootlogger = log.create_logger(
-            sqlalchemy.log.rootlogger.name
+            sqlalchemy.log.rootlogger.name,
         )

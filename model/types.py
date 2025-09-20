@@ -1,10 +1,10 @@
 """This module defines basic types that stores application data."""
 
 import enum
-from typing import ClassVar, Final, List, Optional, TypeVar
+from typing import ClassVar, Final, Optional, TypeVar
 
-from sqlalchemy import orm
 import sqlalchemy as sa
+from sqlalchemy import orm
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import WriteOnlyMapped
 
@@ -48,13 +48,13 @@ class User(ModelBaseType):
     id: Mapped[int] = orm.mapped_column(primary_key=True)
     """User unique Telegram ID value."""
 
-    username: Mapped[Optional[str]] = orm.mapped_column(sa.String(32))
+    username: Mapped[str | None] = orm.mapped_column(sa.String(32))
     """Username as specified in Telegram profile."""
 
-    first_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    first_name: Mapped[str | None] = orm.mapped_column(sa.String(64))
     """User first name as specified in Telegram profile."""
 
-    last_name: Mapped[Optional[str]] = orm.mapped_column(sa.String(64))
+    last_name: Mapped[str | None] = orm.mapped_column(sa.String(64))
     """User last name as specified in Telegram profile."""
 
     state: Mapped = orm.mapped_column(
@@ -103,7 +103,8 @@ class User(ModelBaseType):
         result = ' '.join(parts)
         return result or self.username or f'user_{self.id}'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Returns a string representation of the user."""
         return self.display_name
 
 
@@ -183,7 +184,7 @@ class LearningCard(ModelBaseType):
     )
     """Translation that user has to guess."""
 
-    questions: Mapped[List['LearningQuestion']] = orm.relationship(
+    questions: Mapped[list['LearningQuestion']] = orm.relationship(
         back_populates='answer_card',
         cascade='all, delete-orphan',
         init=False,
@@ -191,7 +192,7 @@ class LearningCard(ModelBaseType):
     )
     """All questions pending with this word."""
 
-    distractors: Mapped[List['LearningDistractor']] = orm.relationship(
+    distractors: Mapped[list['LearningDistractor']] = orm.relationship(
         back_populates='card',
         cascade='all, delete-orphan',
         init=False,
@@ -201,7 +202,9 @@ class LearningCard(ModelBaseType):
 
 
 class LearningQuestion(ModelBaseType):
-    """Holds a learning card pending to be completed by user in current
+    """Holds a learning question for user to answer.
+
+    Holds a learning card pending to be completed by user in current
     learning session. Once the card is completed the question record must
     be deleted. On learning session finish all question records (if any)
     must be deleted.
@@ -239,18 +242,20 @@ class LearningQuestion(ModelBaseType):
     answer_position: Mapped[int] = orm.mapped_column()
     """Answer's position among the distractors."""
 
-    distractors: Mapped[List['LearningDistractor']] = orm.relationship(
+    distractors: Mapped[list['LearningDistractor']] = orm.relationship(
         back_populates='question',
         cascade='all, delete-orphan',
         lazy='joined',
-        order_by=lambda: LearningDistractor.order
+        order_by=lambda: LearningDistractor.order,
     )
     """All distractors for this question."""
 
 
 class LearningDistractor(ModelBaseType):
-    """Holds invalid answer to show along with the correct answer
-    to a user when learning a particular learning card.
+    """Holds wrong answer to `LearningQuestion`.
+
+    Used to show along with the correct answer to a user
+    when learning a particular learning card.
     """
 
     __tablename__ = 'learning_distractor'
@@ -331,3 +336,11 @@ class ModelError(Exception):
 
 class UserNotFoundError(ModelError):
     """A specified user is not currently present in the model."""
+
+    def __init__(self, user: User) -> None:
+        """Initialize an exception object.
+
+        Args:
+            user (User): User object.
+        """
+        super().__init__(f'User {user!r} does not exist')

@@ -1,8 +1,7 @@
 """This module contains definitions for default learning cards."""
 
-from typing import List, Tuple
 
-TEST_CARDS: List[Tuple[str, str]] = [
+TEST_CARDS: list[tuple[str, str]] = [
     ('красный', 'red'),
     ('хороший', 'good'),
     ('быстрый', 'fast'),
@@ -16,7 +15,7 @@ TEST_CARDS: List[Tuple[str, str]] = [
     ('после', 'after'),
 ]
 
-DEFAULT_CARDS: List[Tuple[str, str]] = [
+DEFAULT_CARDS: list[tuple[str, str]] = [
     #
     # Adjectives
     #
@@ -146,7 +145,7 @@ DEFAULT_CARDS: List[Tuple[str, str]] = [
     ('никто', 'nobody'),
     ('ничто', 'nothing'),
     ('чей', 'whose'),
-    ('ничей', 'nobody\'s'),
+    ('ничей', "nobody's"),
     ('этот', 'this'),
     ('тот', 'that'),
     ('это', 'this'),

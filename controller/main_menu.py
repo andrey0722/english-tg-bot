@@ -1,6 +1,6 @@
 """This module shows main menu to user and handles user selection in it."""
 
-from typing import Final, Optional, override
+from typing import Final, override
 
 from messages import MainMenu
 from messages import Messages
@@ -39,7 +39,7 @@ class MainMenuState(ControllerState):
         self,
         session: Session,
         message: InputMessage,
-    ) -> Optional[OutputMessage]:
+    ) -> OutputMessage | None:
         text = message.text
         self._logger.info(
             'User %s selected in main menu: %s',
