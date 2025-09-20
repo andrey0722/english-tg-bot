@@ -11,7 +11,6 @@ import sqlalchemy.log
 from sqlalchemy.sql import functions as func
 
 import log
-import utils
 
 from .types import BaseWord
 from .types import BaseWordT
@@ -809,7 +808,6 @@ class DatabaseModel:
         return DatabaseModelError(e)
 
     @staticmethod
-    @utils.call_once
     def _set_sqlalchemy_logger():
         """Override logger of the `sqlalchemy` library."""
         sqlalchemy.log.rootlogger = log.create_logger(

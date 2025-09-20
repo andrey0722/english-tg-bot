@@ -19,7 +19,6 @@ from controller import OutputMessage
 from controller.types import BotKeyboard
 import log
 from model.types import User
-import utils
 
 BotError = telebot.apihelper.ApiException
 
@@ -266,7 +265,6 @@ class Bot:
         return telebot.TeleBot(token)
 
     @staticmethod
-    @utils.call_once
-    def _set_telebot_logger():
+    def _set_telebot_logger() -> None:
         """Override logger of the `telebot` library."""
         telebot.logger = log.create_logger(telebot.logger.name)

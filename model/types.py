@@ -26,12 +26,12 @@ class UserState(enum.StrEnum):
 user_card_association = sa.Table(
     'user_card',
     ModelBaseType.metadata,
-    sa.Column(
+    sa.Column[int](
         'user_id',
         sa.ForeignKey('user.id', ondelete='CASCADE'),
         primary_key=True,
     ),
-    sa.Column(
+    sa.Column[int](
         'card_id',
         sa.ForeignKey('card.id', ondelete='CASCADE'),
         primary_key=True,
@@ -57,7 +57,7 @@ class User(ModelBaseType):
     last_name: Mapped[str | None] = orm.mapped_column(sa.String(64))
     """User last name as specified in Telegram profile."""
 
-    state: Mapped = orm.mapped_column(
+    state: Mapped[UserState] = orm.mapped_column(
         sa.Enum(UserState, name='userstate', metadata=ModelBaseType.metadata),
         default=UserState.UNKNOWN_STATE,
     )

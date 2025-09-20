@@ -22,7 +22,7 @@ class ApplicationError(RuntimeError):
 class Application:
     """Main class of the bot application."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize application object.
 
         Raises:
@@ -38,7 +38,7 @@ class Application:
         )
         self._bot = Bot(self._controller, self._config.tg_bot_token)
 
-    def run(self):
+    def run(self) -> None:
         """Start the bot and keep running until stopped.
 
         Raises:
